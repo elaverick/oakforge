@@ -256,15 +256,18 @@ def bake_depth_impostor(tree, output_directory: str | Path,
         gl.glEnable(gl.GL_DEPTH_TEST)
         gl.glUseProgram(program)
         matrix_location = gl.glGetUniformLocation(program, "view_projection")
+        if matrix_location < 0:
+            raise RuntimeError("The view_projection uniform was not found in the linked impostor shader")
         directions = fibonacci_directions(settings.views, settings.elevation_bias)
+        print(f"Impostor GL: {gl.glGetString(gl.GL_VERSION).decode('utf-8', 'replace')}")
+        print(f"Impostor mesh: {len(interleaved)} vertices, {matrix_location=}, framebuffer={gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER)}")
         for index, direction in enumerate(directions):
             gl.glClearColor(0.0, 0.0, 0.0, 0.0)
             gl.glClearDepth(1.0)
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
             matrix = _orthographic_view_projection(direction, centre, extent, near, far)
-            # Upload explicit column-major data to avoid GL_TRUE transpose wrapper differences.
-            gl.glUniformMatrix4fv(matrix_location, 1, gl.GL_FALSE,
-                                  np.ascontiguousarray(matrix.T, dtype=np.float32))
+            # Match the established viewer upload path: NumPy row-major + GL transpose.
+            gl.glUniformMatrix4fv(matrix_location, 1, gl.GL_TRUE, matrix)
             gl.glBindVertexArray(vao)
             gl.glDrawArrays(gl.GL_TRIANGLES, 0, len(interleaved))
             gl.glFinish()
@@ -283,6 +286,8 @@ def bake_depth_impostor(tree, output_directory: str | Path,
                                                     gl.GL_RGBA, gl.GL_UNSIGNED_BYTE), dtype=np.uint8)
             colour = colour.reshape(settings.tile_size, settings.tile_size, 4)[::-1]
             normal = normal.reshape(settings.tile_size, settings.tile_size, 4)[::-1]
+            if index == 0:
+                print(f"Impostor view 0: matrix={matrix.tolist()}, covered={int(np.count_nonzero(colour[:, :, 3]))}")
             pad = settings.padding
             x0, y0 = x - pad, y - pad
             colour_tile = np.pad(colour, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
