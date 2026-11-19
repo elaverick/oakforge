@@ -157,11 +157,13 @@ def _orthographic_view_projection(direction: np.ndarray, centre: np.ndarray,
                                   extent: float, near: float, far: float) -> np.ndarray:
     right, up, forward = view_basis(direction)
     eye = centre + forward * (far * 0.5)
+    # direction points from the tree towards the camera. OpenGL looks down -Z,
+    # so points in front of the camera must have negative camera-space Z.
     view = np.identity(4, dtype=np.float32)
-    view[0, :3], view[1, :3], view[2, :3] = right, up, -forward
+    view[0, :3], view[1, :3], view[2, :3] = right, up, forward
     view[0, 3] = -float(np.dot(right, eye))
     view[1, 3] = -float(np.dot(up, eye))
-    view[2, 3] = float(np.dot(forward, eye))
+    view[2, 3] = -float(np.dot(forward, eye))
     projection = np.identity(4, dtype=np.float32)
     projection[0, 0] = 2.0 / extent
     projection[1, 1] = 2.0 / extent
