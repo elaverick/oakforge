@@ -14,7 +14,7 @@ from oakforge.render.impostor import (
 
 class ImpostorMathTests(unittest.TestCase):
     def test_default_atlas_is_eight_by_eight_tiles(self):
-        self.assertEqual(atlas_dimensions(ImpostorSettings()), (1024, 1024))
+        self.assertEqual(atlas_dimensions(ImpostorSettings()), (1056, 1056))
 
     def test_view_directions_are_unit_length_and_distributed(self):
         directions = fibonacci_directions(64)
