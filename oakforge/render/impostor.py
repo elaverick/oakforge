@@ -64,7 +64,8 @@ def atlas_dimensions(settings: ImpostorSettings) -> tuple[int, int]:
     """Return pixel dimensions for a row-major square-tile atlas."""
     settings.validate()
     rows = math.ceil(settings.views / settings.atlas_columns)
-    return settings.atlas_columns * settings.tile_size, rows * settings.tile_size
+    pitch = settings.tile_size + settings.padding * 2
+    return settings.atlas_columns * pitch, rows * pitch
 
 
 def view_basis(direction: Iterable[float]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -266,7 +267,8 @@ def bake_depth_impostor(tree, output_directory: str | Path,
             gl.glDrawArrays(gl.GL_TRIANGLES, 0, len(interleaved))
             col = index % settings.atlas_columns
             row = index // settings.atlas_columns
-            x, y = col * settings.tile_size, row * settings.tile_size
+            pitch = settings.tile_size + settings.padding * 2
+            x, y = col * pitch + settings.padding, row * pitch + settings.padding
             gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT0)
             colour = np.frombuffer(gl.glReadPixels(0, 0, settings.tile_size, settings.tile_size,
                                                     gl.GL_RGBA, gl.GL_UNSIGNED_BYTE), dtype=np.uint8)
@@ -275,14 +277,19 @@ def bake_depth_impostor(tree, output_directory: str | Path,
                                                     gl.GL_RGBA, gl.GL_UNSIGNED_BYTE), dtype=np.uint8)
             colour = colour.reshape(settings.tile_size, settings.tile_size, 4)[::-1]
             normal = normal.reshape(settings.tile_size, settings.tile_size, 4)[::-1]
-            colour_atlas[y:y + settings.tile_size, x:x + settings.tile_size] = colour
-            normal_atlas[y:y + settings.tile_size, x:x + settings.tile_size] = normal
+            pad = settings.padding
+            x0, y0 = x - pad, y - pad
+            colour_tile = np.pad(colour, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+            normal_tile = np.pad(normal, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+            colour_atlas[y0:y0 + pitch, x0:x0 + pitch] = colour_tile
+            normal_atlas[y0:y0 + pitch, x0:x0 + pitch] = normal_tile
             depth = np.frombuffer(gl.glReadPixels(0, 0, settings.tile_size, settings.tile_size,
                                                   gl.GL_DEPTH_COMPONENT, gl.GL_FLOAT), dtype=np.float32)
             depth = np.clip(depth.reshape(settings.tile_size, settings.tile_size)[::-1], 0.0, 1.0)
             depth24 = np.rint(depth * 16777215.0).astype(np.uint32)
             depth_rgb = np.stack(((depth24 >> 16) & 255, (depth24 >> 8) & 255, depth24 & 255), axis=-1).astype(np.uint8)
-            depth_atlas[y:y + settings.tile_size, x:x + settings.tile_size, :3] = depth_rgb
+            depth_tile = np.pad(depth_rgb, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+            depth_atlas[y0:y0 + pitch, x0:x0 + pitch] = depth_tile
 
         write_png(output / "colour.png", colour_atlas)
         write_png(output / "normal.png", normal_atlas)
@@ -293,12 +300,13 @@ def bake_depth_impostor(tree, output_directory: str | Path,
             "settings": asdict(settings),
             "atlas": {"width": width, "height": height, "columns": settings.atlas_columns,
                       "rows": math.ceil(settings.views / settings.atlas_columns),
-                      "tile_size": settings.tile_size},
+                      "tile_size": settings.tile_size, "padding": settings.padding,
+                      "tile_pitch": settings.tile_size + settings.padding * 2},
             "bounds": {"min": bounds_min.tolist(), "max": bounds_max.tolist(),
                        "centre": centre.tolist(), "extent": extent},
             "views": [{"index": i, "direction": direction.tolist(),
-                       "uv_rect": [((i % settings.atlas_columns) * settings.tile_size) / width,
-                                   ((i // settings.atlas_columns) * settings.tile_size) / height,
+                       "uv_rect": [((i % settings.atlas_columns) * (settings.tile_size + settings.padding * 2) + settings.padding) / width,
+                                   ((i // settings.atlas_columns) * (settings.tile_size + settings.padding * 2) + settings.padding) / height,
                                    settings.tile_size / width, settings.tile_size / height]}
                       for i, direction in enumerate(directions)],
             "runtime_geometry": {"vertices": 4, "triangles": 2},
