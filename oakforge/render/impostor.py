@@ -8,6 +8,7 @@ atlases plus a JSON manifest. Runtime rendering needs only one quad per tree.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import math
 import struct
@@ -212,7 +213,7 @@ def bake_depth_impostor(tree, output_directory: str | Path,
     width, height = atlas_dimensions(settings)
     colour_atlas = np.zeros((height, width, 4), dtype=np.uint8)
     normal_atlas = np.zeros_like(colour_atlas)
-    depth_atlas = np.full((height, width, 1), 255, dtype=np.uint8)
+    depth_atlas = np.full((height, width, 3), 255, dtype=np.uint8)
 
     try:
         glfw.make_context_current(window)
@@ -225,7 +226,7 @@ def bake_depth_impostor(tree, output_directory: str | Path,
         stride = 9 * 4
         for location, size, offset in ((0, 3, 0), (1, 3, 12), (2, 3, 24)):
             gl.glEnableVertexAttribArray(location)
-            gl.glVertexAttribPointer(location, size, gl.GL_FLOAT, gl.GL_FALSE, stride, gl.ctypes.c_void_p(offset))
+            gl.glVertexAttribPointer(location, size, gl.GL_FLOAT, gl.GL_FALSE, stride, ctypes.c_void_p(offset))
 
         framebuffer = gl.glGenFramebuffers(1)
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, framebuffer)
@@ -266,11 +267,12 @@ def bake_depth_impostor(tree, output_directory: str | Path,
             col = index % settings.atlas_columns
             row = index // settings.atlas_columns
             x, y = col * settings.tile_size, row * settings.tile_size
+            gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT0)
             colour = np.frombuffer(gl.glReadPixels(0, 0, settings.tile_size, settings.tile_size,
                                                     gl.GL_RGBA, gl.GL_UNSIGNED_BYTE), dtype=np.uint8)
-            normal = np.frombuffer(gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT1) or
-                                   gl.glReadPixels(0, 0, settings.tile_size, settings.tile_size,
-                                                   gl.GL_RGBA, gl.GL_UNSIGNED_BYTE), dtype=np.uint8)
+            gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT1)
+            normal = np.frombuffer(gl.glReadPixels(0, 0, settings.tile_size, settings.tile_size,
+                                                    gl.GL_RGBA, gl.GL_UNSIGNED_BYTE), dtype=np.uint8)
             colour = colour.reshape(settings.tile_size, settings.tile_size, 4)[::-1]
             normal = normal.reshape(settings.tile_size, settings.tile_size, 4)[::-1]
             colour_atlas[y:y + settings.tile_size, x:x + settings.tile_size] = colour
@@ -278,7 +280,9 @@ def bake_depth_impostor(tree, output_directory: str | Path,
             depth = np.frombuffer(gl.glReadPixels(0, 0, settings.tile_size, settings.tile_size,
                                                   gl.GL_DEPTH_COMPONENT, gl.GL_FLOAT), dtype=np.float32)
             depth = np.clip(depth.reshape(settings.tile_size, settings.tile_size)[::-1], 0.0, 1.0)
-            depth_atlas[y:y + settings.tile_size, x:x + settings.tile_size, 0] = np.rint(depth * 255).astype(np.uint8)
+            depth24 = np.rint(depth * 16777215.0).astype(np.uint32)
+            depth_rgb = np.stack(((depth24 >> 16) & 255, (depth24 >> 8) & 255, depth24 & 255), axis=-1).astype(np.uint8)
+            depth_atlas[y:y + settings.tile_size, x:x + settings.tile_size, :3] = depth_rgb
 
         write_png(output / "colour.png", colour_atlas)
         write_png(output / "normal.png", normal_atlas)
@@ -299,7 +303,7 @@ def bake_depth_impostor(tree, output_directory: str | Path,
                       for i, direction in enumerate(directions)],
             "runtime_geometry": {"vertices": 4, "triangles": 2},
             "textures": {"colour": "colour.png", "normal": "normal.png", "depth": "depth.png"},
-            "depth_encoding": "OpenGL orthographic depth, linear over [0,1], quantised to 8-bit",
+            "depth_encoding": "OpenGL orthographic depth, linear over [0,1], packed big-endian into RGB24",
         }
         (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         return manifest
