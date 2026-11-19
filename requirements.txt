@@ -1,0 +1,10 @@
+# Geometry and recipe execution
+numpy>=1.24
+PyYAML>=6.0
+
+# Interactive OpenGL 3.3 viewer
+glfw>=2.6
+PyOpenGL>=3.1
+
+# Smooth implicit unions for integrated trunk, root and major-limb geometry
+scikit-image>=0.22

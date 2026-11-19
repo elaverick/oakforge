@@ -1,0 +1,127 @@
+# Minimal recipe for developing the English oak's main stem in isolation.
+tree:
+  name: English Oak - Trunk Study
+  species: Quercus robur
+  seed: 27
+  parameters:
+    trunk:
+      # A mature English oak commonly divides into major limbs relatively low down.
+      height: 8.0
+      base_radius: 1.28
+      stem_radius: 0.88
+      top_radius: 0.38
+      flare_height: 2.7
+      buttress_count: 7
+      buttress_strength: 0.28
+      trunk_irregularity: 0.095
+      curve_x: 0.42
+      curve_z: -0.34
+      sweep_x: 0.24
+      sweep_z: 0.19
+      stem_bulge_strength: 0.16
+      curvature_strength: 0.34
+      root_spread: 0.78
+      root_count: 7
+      root_phase: 0.28
+      root_lobe_power: 3.8
+      root_valley_depth: 0.12
+      bark_ridge_count: 11
+      bark_ridge_strength: 0.022
+      knuckle_strength: 1.35
+      limb_knuckles:
+        - {height: 0.68, angle: 0.35, strength: 0.16, width: 0.075}
+        - {height: 0.79, angle: 2.45, strength: 0.13, width: 0.065}
+        - {height: 0.87, angle: 4.35, strength: 0.12, width: 0.06}
+      segments: 72
+      taper_power: 0.72
+pipeline:
+  - call:
+      tool: trunk.generate
+      args:
+        height: "$tree.parameters.trunk.height"
+        base_radius: "$tree.parameters.trunk.base_radius"
+        stem_radius: "$tree.parameters.trunk.stem_radius"
+        top_radius: "$tree.parameters.trunk.top_radius"
+        flare_height: "$tree.parameters.trunk.flare_height"
+        buttress_count: "$tree.parameters.trunk.buttress_count"
+        buttress_strength: "$tree.parameters.trunk.buttress_strength"
+        trunk_irregularity: "$tree.parameters.trunk.trunk_irregularity"
+        curve_x: "$tree.parameters.trunk.curve_x"
+        curve_z: "$tree.parameters.trunk.curve_z"
+        sweep_x: "$tree.parameters.trunk.sweep_x"
+        sweep_z: "$tree.parameters.trunk.sweep_z"
+        stem_bulge_strength: "$tree.parameters.trunk.stem_bulge_strength"
+        curvature_strength: "$tree.parameters.trunk.curvature_strength"
+        root_spread: "$tree.parameters.trunk.root_spread"
+        root_count: "$tree.parameters.trunk.root_count"
+        root_phase: "$tree.parameters.trunk.root_phase"
+        limb_knuckles: "$tree.parameters.trunk.limb_knuckles"
+        knuckle_strength: "$tree.parameters.trunk.knuckle_strength"
+        segments: "$tree.parameters.trunk.segments"
+        taper_power: "$tree.parameters.trunk.taper_power"
+      save_as: trunk
+      append_to: groups.trunk
+  - call:
+      tool: roots.spread
+      args:
+        trunk: "$trunk"
+        distribution: radial_jittered
+        count: 7
+        length: 2.7
+        base_radius: 0.40
+        tip_height: -0.12
+        taper_power: 0.95
+        collar_height: 1.25
+        length_variation: 0.34
+        width_variation: 0.28
+        direction_variation_degrees: 10.0
+        angular_jitter_degrees: 18.0
+        phase: 0.28
+        segments: 16
+      append_to: groups.roots
+  # Secondary roots follow the soil surface and branch off the larger buttresses.
+  - call:
+      tool: roots.branch
+      args:
+        parents: "$groups.roots"
+        distribution: staggered
+        count_per_root: 2
+        probability: 0.80
+        parent_position_range: [0.30, 0.74]
+        angle_range_degrees: [38, 68]
+        length: 1.85
+        length_variation: 0.34
+        base_radius_scale: 0.76
+        tip_radius_ratio: 0.20
+        tip_height: -0.12
+        segments: 12
+      append_to: groups.roots
+  # A sparse third tier creates small forks that break up the spoke-like root ends.
+  - call:
+      tool: roots.branch
+      args:
+        parents: "$groups.roots"
+        parent_tiers: [lateral]
+        child_tier: feeder
+        distribution: random
+        count_per_root: 1
+        probability: 0.68
+        parent_position_range: [0.38, 0.74]
+        angle_range_degrees: [48, 80]
+        length: 1.30
+        length_variation: 0.30
+        base_radius_scale: 0.62
+        tip_radius_ratio: 0.22
+        tip_height: -0.12
+        segments: 10
+      append_to: groups.roots
+  - call:
+      tool: wood_surface.build
+      args:
+        branches: ["$groups.trunk", "$groups.roots"]
+        voxel_size: 0.05
+        blend_width: 0.18
+        root_vertical_scale: 1.08
+        root_thickness_scale: 0.94
+        padding: 0.35
+      save_as: wood_surface

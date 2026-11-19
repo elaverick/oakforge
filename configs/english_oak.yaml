@@ -1,0 +1,715 @@
+# The recipe describes the tree's hierarchy and the order in which tools run.
+# All dimensions are metres. Changing these values changes the generated oak.
+tree:
+  name: English Oak
+  species: Quercus robur
+  seed: 27
+  parameters:
+    trunk:
+      height: 8.8
+      base_radius: 1.55
+      stem_radius: 1.00
+      top_radius: 0.16
+      flare_height: 2.7
+      buttress_count: 7
+      buttress_strength: 0.30
+      trunk_irregularity: 0.11
+      bark_form_strength: 0.045
+      curve_x: 1.02
+      curve_z: -0.82
+      sweep_x: 0.42
+      sweep_z: 0.34
+      stem_bulge_strength: 0.20
+      curvature_strength: 0.34
+      segments: 64
+      taper_power: 0.68
+    roots:
+      # Omit placements to use seeded procedural distribution around the bole.
+      distribution: radial_jittered
+      count: 7
+      phase_degrees: 16.0
+      angular_jitter_degrees: 20.0
+      length: 3.25
+      base_radius: 0.54
+      collar_height: 1.52
+      collar_height_variation: 0.12
+      length_variation: 0.38
+      direction_variation_degrees: 8.0
+      width_variation: 0.32
+      attachment_inset: 0.16
+      tip_height: -0.12
+      taper_power: 0.95
+      segments: 14
+      collar_swell: 0.21
+      belly_swell: 0.11
+    lateral_roots:
+      distribution: staggered
+      count_per_root: 2
+      probability: 0.80
+      parent_position_range: [0.32, 0.72]
+      angle_range_degrees: [38, 68]
+      length: 1.85
+      length_variation: 0.34
+      base_radius_scale: 0.76
+      tip_radius_ratio: 0.20
+      tip_height: -0.12
+      segments: 12
+    wood_surface:
+      voxel_size: 0.105
+      blend_width: 0.24
+      root_vertical_scale: 1.08
+      root_thickness_scale: 0.94
+      padding: 0.35
+    crown:
+      centre_x: 0.82
+      centre_z: -0.68
+      radius_x: 9.2
+      radius_z: 8.6
+      top_height: 14.5
+      bottom_height: 3.45
+      bottom_rise: 0.62
+      dome_drop: 1.85
+      dome_power: 2.0
+      strength: 1.0
+      mid_height: 8.2
+      vertical_response: 0.46
+      vertical_scale: 3.2
+      vertical_inheritance: 0.14
+      convergence_target_height: 13.65
+      convergence_spread: 1.25
+    primary:
+      count: 8
+      start_range: [0.28, 0.82]
+      placement_variation: 0.92
+      length: 8.2
+      length_variation: 0.27
+      radius_scale: 0.62
+      upward_bias: 0.30
+      outward_bias: 1.0
+      forward_bias: 0.0
+      droop: 0.14
+      direction_variation: 0.19
+    leaders:
+      count: 6
+      start_range: [0.60, 0.93]
+      placement_variation: 0.82
+      length: 7.7
+      length_variation: 0.20
+      radius_scale: 0.44
+      upward_bias: 0.92
+      outward_bias: 0.70
+      forward_bias: 0.04
+      droop: 0.08
+      direction_variation: 0.18
+    secondary:
+      count: 7
+      length_factor: 0.42
+      length_variation: 0.28
+      radius_scale: 0.37
+      upward_bias: 0.24
+      outward_bias: 0.76
+      forward_bias: 0.16
+      droop: 0.15
+      direction_variation: 0.22
+      crown_convergence: 0.36
+    leader_secondary:
+      count: 8
+      length_factor: 0.46
+      length_variation: 0.24
+      radius_scale: 0.34
+      upward_bias: 0.50
+      outward_bias: 0.56
+      forward_bias: 0.10
+      droop: 0.10
+      direction_variation: 0.20
+      crown_convergence: 0.68
+    tertiary:
+      count: 6
+      length_factor: 0.38
+      length_variation: 0.28
+      radius_scale: 0.31
+      upward_bias: 0.19
+      outward_bias: 0.69
+      forward_bias: 0.12
+      droop: 0.17
+      direction_variation: 0.25
+      crown_convergence: 0.58
+    twigs:
+      count: 8
+      length_factor: 0.30
+      length_variation: 0.28
+      radius_scale: 0.24
+      upward_bias: 0.12
+      outward_bias: 0.63
+      forward_bias: 0.08
+      droop: 0.18
+      direction_variation: 0.24
+      crown_convergence: 0.32
+    foliage:
+      enabled: true
+      passes: 4
+      leaves_per_pass: 12
+      leaf_length: 0.135
+      width_ratio: 0.70
+      cluster_count: 4
+      cluster_spread: 0.055
+      radial_spread: 0.12
+      colour_variation: 0.055
+
+pipeline:
+  # The trunk is the root of the tree hierarchy.
+  - call:
+      tool: trunk.generate
+      args:
+        height: "$tree.parameters.trunk.height"
+        base_radius: "$tree.parameters.trunk.base_radius"
+        stem_radius: "$tree.parameters.trunk.stem_radius"
+        top_radius: "$tree.parameters.trunk.top_radius"
+        flare_height: "$tree.parameters.trunk.flare_height"
+        buttress_count: "$tree.parameters.trunk.buttress_count"
+        buttress_strength: "$tree.parameters.trunk.buttress_strength"
+        trunk_irregularity: "$tree.parameters.trunk.trunk_irregularity"
+        bark_form_strength: "$tree.parameters.trunk.bark_form_strength"
+        curve_x: "$tree.parameters.trunk.curve_x"
+        curve_z: "$tree.parameters.trunk.curve_z"
+        sweep_x: "$tree.parameters.trunk.sweep_x"
+        sweep_z: "$tree.parameters.trunk.sweep_z"
+        stem_bulge_strength: "$tree.parameters.trunk.stem_bulge_strength"
+        curvature_strength: "$tree.parameters.trunk.curvature_strength"
+        segments: "$tree.parameters.trunk.segments"
+        taper_power: "$tree.parameters.trunk.taper_power"
+      save_as: trunk
+      append_to: groups.trunk
+
+  - call:
+      tool: roots.spread
+      args:
+        trunk: "$trunk"
+        distribution: "$tree.parameters.roots.distribution"
+        count: "$tree.parameters.roots.count"
+        length: "$tree.parameters.roots.length"
+        base_radius: "$tree.parameters.roots.base_radius"
+        collar_height: "$tree.parameters.roots.collar_height"
+        collar_height_variation: "$tree.parameters.roots.collar_height_variation"
+        length_variation: "$tree.parameters.roots.length_variation"
+        direction_variation_degrees: "$tree.parameters.roots.direction_variation_degrees"
+        width_variation: "$tree.parameters.roots.width_variation"
+        angular_jitter_degrees: "$tree.parameters.roots.angular_jitter_degrees"
+        taper_power: "$tree.parameters.roots.taper_power"
+        collar_swell: "$tree.parameters.roots.collar_swell"
+        belly_swell: "$tree.parameters.roots.belly_swell"
+        phase_degrees: "$tree.parameters.roots.phase_degrees"
+        attachment_inset: "$tree.parameters.roots.attachment_inset"
+        tip_height: "$tree.parameters.roots.tip_height"
+        segments: "$tree.parameters.roots.segments"
+      append_to: groups.roots
+
+  - call:
+      tool: roots.branch
+      args:
+        parents: "$groups.roots"
+        distribution: "$tree.parameters.lateral_roots.distribution"
+        count_per_root: "$tree.parameters.lateral_roots.count_per_root"
+        probability: "$tree.parameters.lateral_roots.probability"
+        parent_position_range: "$tree.parameters.lateral_roots.parent_position_range"
+        angle_range_degrees: "$tree.parameters.lateral_roots.angle_range_degrees"
+        length: "$tree.parameters.lateral_roots.length"
+        length_variation: "$tree.parameters.lateral_roots.length_variation"
+        base_radius_scale: "$tree.parameters.lateral_roots.base_radius_scale"
+        tip_radius_ratio: "$tree.parameters.lateral_roots.tip_radius_ratio"
+        segments: "$tree.parameters.lateral_roots.segments"
+      append_to: groups.roots
+
+  - call:
+      tool: roots.branch
+      args:
+        parents: "$groups.roots"
+        parent_tiers: [lateral]
+        child_tier: feeder
+        distribution: random
+        count_per_root: 1
+        probability: 0.68
+        parent_position_range: [0.38, 0.74]
+        angle_range_degrees: [48, 80]
+        length: 1.35
+        length_variation: 0.32
+        base_radius_scale: 0.62
+        tip_radius_ratio: 0.22
+        tip_height: -0.12
+        segments: 8
+      append_to: groups.roots
+
+  # The first branching tier spreads the oak's major limbs from the trunk.
+  - call:
+      tool: branching.spawn
+      args:
+        parent: "$trunk"
+        crown_envelope: "$tree.parameters.crown"
+        crown_mid_height: "$tree.parameters.crown.mid_height"
+        crown_target_height: "$tree.parameters.crown.convergence_target_height"
+        crown_convergence: 0.22
+        crown_inset: 0.18
+        junction_swell: 0.22
+        junction_decay: 0.19
+        junction_embed: 0.36
+        height_adaptive_strength: "$tree.parameters.crown.vertical_response"
+        height_adaptive_scale: "$tree.parameters.crown.vertical_scale"
+        vertical_inheritance: "$tree.parameters.crown.vertical_inheritance"
+        role: primary
+        depth: 1
+        count: "$tree.parameters.primary.count"
+        start_range: "$tree.parameters.primary.start_range"
+        length: "$tree.parameters.primary.length"
+        placement_variation: "$tree.parameters.primary.placement_variation"
+        length_variation: "$tree.parameters.primary.length_variation"
+        radius_scale: "$tree.parameters.primary.radius_scale"
+        upward_bias: "$tree.parameters.primary.upward_bias"
+        outward_bias: "$tree.parameters.primary.outward_bias"
+        forward_bias: "$tree.parameters.primary.forward_bias"
+        droop: "$tree.parameters.primary.droop"
+        bend_strength: 0.34
+        taper_power: 0.62
+        angular_variation: 0.30
+        direction_variation: "$tree.parameters.primary.direction_variation"
+        segments: 13
+      save_as: primary_branches
+      append_to: groups.primary
+
+  # Upper leaders replace the old bare continuation of the central stem. Several
+  # substantial boughs rise together and then divide into overlapping crown forks.
+  - call:
+      tool: branching.spawn
+      args:
+        parent: "$trunk"
+        crown_envelope: "$tree.parameters.crown"
+        crown_mid_height: "$tree.parameters.crown.mid_height"
+        crown_target_height: "$tree.parameters.crown.convergence_target_height"
+        crown_convergence: 0.36
+        crown_inset: 0.18
+        junction_swell: 0.24
+        junction_decay: 0.19
+        junction_embed: 0.36
+        role: leader
+        depth: 1
+        count: "$tree.parameters.leaders.count"
+        start_range: "$tree.parameters.leaders.start_range"
+        placement_variation: "$tree.parameters.leaders.placement_variation"
+        length: "$tree.parameters.leaders.length"
+        length_variation: "$tree.parameters.leaders.length_variation"
+        radius_scale: "$tree.parameters.leaders.radius_scale"
+        upward_bias: "$tree.parameters.leaders.upward_bias"
+        outward_bias: "$tree.parameters.leaders.outward_bias"
+        forward_bias: "$tree.parameters.leaders.forward_bias"
+        droop: "$tree.parameters.leaders.droop"
+        bend_strength: 0.28
+        taper_power: 0.65
+        angular_variation: 0.36
+        direction_variation: "$tree.parameters.leaders.direction_variation"
+        segments: 12
+      save_as: upper_leaders
+      append_to: groups.leaders
+
+  # Iterate over the branching hierarchy: scaffold limbs, upper leaders and finer forks.
+  - set:
+      growth_level: 1
+  - while:
+      condition:
+        lt: ["$growth_level", 4]
+      max_iterations: 3
+      do:
+        - if:
+            condition:
+              eq: ["$growth_level", 1]
+            then:
+              - for:
+                  each: "$groups.primary"
+                  as: parent_branch
+                  do:
+                    - call:
+                        tool: branching.spawn
+                        args:
+                          parent: "$parent_branch"
+                          crown_envelope: "$tree.parameters.crown"
+                          crown_mid_height: "$tree.parameters.crown.mid_height"
+                          crown_target_height: "$tree.parameters.crown.convergence_target_height"
+                          crown_convergence: "$tree.parameters.secondary.crown_convergence"
+                          crown_inset: 0.24
+                          junction_swell: 0.30
+                          junction_decay: 0.16
+                          junction_embed: 0.50
+                          height_adaptive_strength: "$tree.parameters.crown.vertical_response"
+                          height_adaptive_scale: "$tree.parameters.crown.vertical_scale"
+                          vertical_inheritance: "$tree.parameters.crown.vertical_inheritance"
+                          role: secondary
+                          depth: 2
+                          count: "$tree.parameters.secondary.count"
+                          start_range: [0.16, 0.92]
+                          length_factor: "$tree.parameters.secondary.length_factor"
+                          placement_variation: 0.48
+                          length_variation: "$tree.parameters.secondary.length_variation"
+                          radius_scale: "$tree.parameters.secondary.radius_scale"
+                          upward_bias: "$tree.parameters.secondary.upward_bias"
+                          outward_bias: "$tree.parameters.secondary.outward_bias"
+                          forward_bias: "$tree.parameters.secondary.forward_bias"
+                          droop: "$tree.parameters.secondary.droop"
+                          bend_strength: 0.27
+                          outward_inheritance: 0.58
+                          taper_power: 0.72
+                          angular_variation: 0.22
+                          direction_variation: "$tree.parameters.secondary.direction_variation"
+                          segments: 9
+                        append_to: groups.secondary
+              - for:
+                  each: "$groups.leaders"
+                  as: parent_branch
+                  do:
+                    - call:
+                        tool: branching.spawn
+                        args:
+                          parent: "$parent_branch"
+                          crown_envelope: "$tree.parameters.crown"
+                          crown_mid_height: "$tree.parameters.crown.mid_height"
+                          crown_target_height: "$tree.parameters.crown.convergence_target_height"
+                          crown_convergence: "$tree.parameters.leader_secondary.crown_convergence"
+                          crown_inset: 0.24
+                          junction_swell: 0.30
+                          junction_decay: 0.16
+                          junction_embed: 0.50
+                          height_adaptive_strength: "$tree.parameters.crown.vertical_response"
+                          height_adaptive_scale: "$tree.parameters.crown.vertical_scale"
+                          vertical_inheritance: "$tree.parameters.crown.vertical_inheritance"
+                          role: secondary
+                          depth: 2
+                          count: "$tree.parameters.leader_secondary.count"
+                          start_range: [0.14, 0.94]
+                          length_factor: "$tree.parameters.leader_secondary.length_factor"
+                          placement_variation: 0.62
+                          length_variation: "$tree.parameters.leader_secondary.length_variation"
+                          radius_scale: "$tree.parameters.leader_secondary.radius_scale"
+                          upward_bias: "$tree.parameters.leader_secondary.upward_bias"
+                          outward_bias: "$tree.parameters.leader_secondary.outward_bias"
+                          forward_bias: "$tree.parameters.leader_secondary.forward_bias"
+                          droop: "$tree.parameters.leader_secondary.droop"
+                          bend_strength: 0.24
+                          outward_inheritance: 0.22
+                          taper_power: 0.72
+                          angular_variation: 0.26
+                          direction_variation: "$tree.parameters.leader_secondary.direction_variation"
+                          segments: 9
+                        append_to: groups.secondary
+            else:
+              - if:
+                  condition:
+                    eq: ["$growth_level", 2]
+                  then:
+                    - for:
+                        each: "$groups.secondary"
+                        as: parent_branch
+                        do:
+                          - call:
+                              tool: branching.spawn
+                              args:
+                                parent: "$parent_branch"
+                                crown_envelope: "$tree.parameters.crown"
+                                crown_mid_height: "$tree.parameters.crown.mid_height"
+                                crown_target_height: "$tree.parameters.crown.convergence_target_height"
+                                crown_convergence: "$tree.parameters.tertiary.crown_convergence"
+                                crown_inset: 0.46
+                                height_adaptive_strength: "$tree.parameters.crown.vertical_response"
+                                height_adaptive_scale: "$tree.parameters.crown.vertical_scale"
+                                vertical_inheritance: "$tree.parameters.crown.vertical_inheritance"
+                                role: tertiary
+                                depth: 3
+                                count: "$tree.parameters.tertiary.count"
+                                start_range: [0.20, 0.92]
+                                length_factor: "$tree.parameters.tertiary.length_factor"
+                                placement_variation: 0.42
+                                length_variation: "$tree.parameters.tertiary.length_variation"
+                                radius_scale: "$tree.parameters.tertiary.radius_scale"
+                                minimum_base_radius: 0.028
+                                minimum_tip_radius: 0.008
+                                junction_swell: 0.34
+                                junction_decay: 0.17
+                                junction_embed: 0.72
+                                upward_bias: "$tree.parameters.tertiary.upward_bias"
+                                outward_bias: "$tree.parameters.tertiary.outward_bias"
+                                forward_bias: "$tree.parameters.tertiary.forward_bias"
+                                droop: "$tree.parameters.tertiary.droop"
+                                bend_strength: 0.25
+                                outward_inheritance: 0.52
+                                taper_power: 0.76
+                                angular_variation: 0.24
+                                direction_variation: "$tree.parameters.tertiary.direction_variation"
+                                segments: 7
+                              append_to: groups.tertiary
+                  else:
+                    - for:
+                        each: "$groups.tertiary"
+                        as: parent_branch
+                        do:
+                          - call:
+                              tool: twig.spawn
+                              args:
+                                parent: "$parent_branch"
+                                crown_envelope: "$tree.parameters.crown"
+                                crown_mid_height: "$tree.parameters.crown.mid_height"
+                                crown_target_height: "$tree.parameters.crown.convergence_target_height"
+                                crown_convergence: "$tree.parameters.twigs.crown_convergence"
+                                height_adaptive_strength: "$tree.parameters.crown.vertical_response"
+                                height_adaptive_scale: "$tree.parameters.crown.vertical_scale"
+                                vertical_inheritance: "$tree.parameters.crown.vertical_inheritance"
+                                count: "$tree.parameters.twigs.count"
+                                start_range: [0.18, 0.96]
+                                length_factor: "$tree.parameters.twigs.length_factor"
+                                placement_variation: 0.36
+                                length_variation: "$tree.parameters.twigs.length_variation"
+                                radius_scale: 0.34
+                                minimum_base_radius: 0.014
+                                minimum_tip_radius: 0.006
+                                junction_swell: 0.55
+                                junction_decay: 0.18
+                                junction_embed: 0.90
+                                crown_inset: 0.86
+                                upward_bias: "$tree.parameters.twigs.upward_bias"
+                                outward_bias: "$tree.parameters.twigs.outward_bias"
+                                forward_bias: "$tree.parameters.twigs.forward_bias"
+                                droop: "$tree.parameters.twigs.droop"
+                                bend_strength: 0.23
+                                outward_inheritance: 0.45
+                                taper_power: 0.78
+                                angular_variation: 0.24
+                                direction_variation: "$tree.parameters.twigs.direction_variation"
+                                role: twig
+                                radius_tip_scale: 0.18
+                                segments: 5
+                                depth: 4
+                              append_to: groups.twigs
+        - set:
+            growth_level:
+              add: ["$growth_level", 1]
+
+  # Short leaf-bearing sprays break up the long gaps between the major scaffold limbs.
+  # They are deliberately placed on both secondary and tertiary branches so the
+  # foliage occupies the interior as well as the outside silhouette of the crown.
+  - for:
+      each: "$groups.leaders"
+      as: leader_parent
+      do:
+        - call:
+            tool: twig.spawn
+            args:
+              parent: "$leader_parent"
+              role: spray
+              depth: 2
+              count: 3
+              start_range: [0.24, 0.88]
+              length_factor: 0.16
+              length_variation: 0.30
+              radius_scale: 0.26
+              radius_tip_scale: 0.18
+              minimum_base_radius: 0.015
+              minimum_tip_radius: 0.006
+              junction_swell: 0.52
+              junction_decay: 0.18
+              junction_embed: 0.90
+              crown_inset: 0.66
+              upward_bias: 0.18
+              outward_bias: 0.54
+              forward_bias: 0.10
+              droop: 0.15
+              direction_variation: 0.30
+              bend_strength: 0.16
+              outward_inheritance: 0.25
+              crown_envelope: "$tree.parameters.crown"
+              crown_mid_height: "$tree.parameters.crown.mid_height"
+              crown_target_height: "$tree.parameters.crown.convergence_target_height"
+              crown_convergence: 0.38
+              height_adaptive_strength: "$tree.parameters.crown.vertical_response"
+              height_adaptive_scale: "$tree.parameters.crown.vertical_scale"
+              vertical_inheritance: "$tree.parameters.crown.vertical_inheritance"
+              segments: 4
+            append_to: groups.sprays
+
+  - for:
+      each: "$groups.primary"
+      as: primary_parent
+      do:
+        - call:
+            tool: twig.spawn
+            args:
+              parent: "$primary_parent"
+              role: spray
+              depth: 2
+              count: 2
+              start_range: [0.30, 0.86]
+              length_factor: 0.13
+              length_variation: 0.34
+              radius_scale: 0.25
+              radius_tip_scale: 0.18
+              minimum_base_radius: 0.015
+              minimum_tip_radius: 0.006
+              junction_swell: 0.52
+              junction_decay: 0.18
+              junction_embed: 0.90
+              crown_inset: 0.66
+              upward_bias: 0.16
+              outward_bias: 0.50
+              forward_bias: 0.10
+              droop: 0.16
+              direction_variation: 0.32
+              bend_strength: 0.15
+              outward_inheritance: 0.26
+              crown_envelope: "$tree.parameters.crown"
+              crown_mid_height: "$tree.parameters.crown.mid_height"
+              crown_target_height: "$tree.parameters.crown.convergence_target_height"
+              crown_convergence: 0.34
+              height_adaptive_strength: "$tree.parameters.crown.vertical_response"
+              height_adaptive_scale: "$tree.parameters.crown.vertical_scale"
+              vertical_inheritance: "$tree.parameters.crown.vertical_inheritance"
+              segments: 4
+            append_to: groups.sprays
+
+  - for:
+      each: "$groups.secondary"
+      as: secondary_parent
+      do:
+        - call:
+            tool: twig.spawn
+            args:
+              parent: "$secondary_parent"
+              role: spray
+              depth: 3
+              count: 2
+              start_range: [0.28, 0.84]
+              length_factor: 0.18
+              length_variation: 0.38
+              radius_scale: 0.26
+              radius_tip_scale: 0.18
+              minimum_base_radius: 0.015
+              minimum_tip_radius: 0.006
+              junction_swell: 0.52
+              junction_decay: 0.18
+              junction_embed: 0.90
+              crown_inset: 0.66
+              upward_bias: 0.04
+              outward_bias: 0.58
+              forward_bias: 0.10
+              droop: 0.18
+              direction_variation: 0.34
+              bend_strength: 0.17
+              outward_inheritance: 0.38
+              crown_envelope: "$tree.parameters.crown"
+              crown_mid_height: "$tree.parameters.crown.mid_height"
+              crown_target_height: "$tree.parameters.crown.convergence_target_height"
+              crown_convergence: 0.30
+              height_adaptive_strength: "$tree.parameters.crown.vertical_response"
+              height_adaptive_scale: "$tree.parameters.crown.vertical_scale"
+              vertical_inheritance: "$tree.parameters.crown.vertical_inheritance"
+              segments: 4
+            append_to: groups.sprays
+
+  - for:
+      each: "$groups.tertiary"
+      as: tertiary_parent
+      do:
+        - call:
+            tool: twig.spawn
+            args:
+              parent: "$tertiary_parent"
+              role: spray
+              depth: 4
+              count: 2
+              start_range: [0.24, 0.88]
+              length_factor: 0.20
+              length_variation: 0.38
+              radius_scale: 0.26
+              radius_tip_scale: 0.18
+              minimum_base_radius: 0.015
+              minimum_tip_radius: 0.006
+              junction_swell: 0.52
+              junction_decay: 0.18
+              junction_embed: 0.90
+              crown_inset: 0.66
+              upward_bias: 0.05
+              outward_bias: 0.60
+              forward_bias: 0.10
+              droop: 0.19
+              direction_variation: 0.36
+              bend_strength: 0.15
+              outward_inheritance: 0.34
+              crown_envelope: "$tree.parameters.crown"
+              crown_mid_height: "$tree.parameters.crown.mid_height"
+              crown_target_height: "$tree.parameters.crown.convergence_target_height"
+              crown_convergence: 0.30
+              height_adaptive_strength: "$tree.parameters.crown.vertical_response"
+              height_adaptive_scale: "$tree.parameters.crown.vertical_scale"
+              vertical_inheritance: "$tree.parameters.crown.vertical_inheritance"
+              segments: 4
+            append_to: groups.sprays
+
+  # Fuse the trunk, buttress roots, scaffold limbs and secondary limbs into one continuous surface.
+  - call:
+      tool: wood_surface.build
+      args:
+        branches: ["$groups.trunk", "$groups.roots", "$groups.primary", "$groups.leaders", "$groups.secondary"]
+        voxel_size: "$tree.parameters.wood_surface.voxel_size"
+        blend_width: "$tree.parameters.wood_surface.blend_width"
+        root_vertical_scale: "$tree.parameters.wood_surface.root_vertical_scale"
+        root_thickness_scale: "$tree.parameters.wood_surface.root_thickness_scale"
+        padding: "$tree.parameters.wood_surface.padding"
+      save_as: wood_surface
+
+  # An if/then/else selects whether this recipe should add foliage.
+  # do_while ensures that each enabled tree gets at least one foliage pass.
+  - if:
+      condition: "$tree.parameters.foliage.enabled"
+      then:
+        - set:
+            leaf_pass: 0
+        - do_while:
+            condition:
+              lt: ["$leaf_pass", "$tree.parameters.foliage.passes"]
+            max_iterations: 5
+            do:
+              - for:
+                  each: "$groups.twigs"
+                  as: terminal_twig
+                  do:
+                    - call:
+                        tool: foliage.scatter_oak
+                        args:
+                          twig: "$terminal_twig"
+                          count: "$tree.parameters.foliage.leaves_per_pass"
+                          pass_index: "$leaf_pass"
+                          leaf_length: "$tree.parameters.foliage.leaf_length"
+                          width_ratio: "$tree.parameters.foliage.width_ratio"
+                          placement_range: [0.04, 0.99]
+                          cluster_count: "$tree.parameters.foliage.cluster_count"
+                          cluster_spread: "$tree.parameters.foliage.cluster_spread"
+                          radial_spread: "$tree.parameters.foliage.radial_spread"
+                          colour_variation: "$tree.parameters.foliage.colour_variation"
+                        append_to: groups.leaves
+              - for:
+                  each: "$groups.sprays"
+                  as: foliage_spray
+                  do:
+                    - call:
+                        tool: foliage.scatter_oak
+                        args:
+                          twig: "$foliage_spray"
+                          count: "$tree.parameters.foliage.leaves_per_pass"
+                          pass_index: "$leaf_pass"
+                          leaf_length: "$tree.parameters.foliage.leaf_length"
+                          width_ratio: "$tree.parameters.foliage.width_ratio"
+                          placement_range: [0.04, 0.99]
+                          cluster_count: "$tree.parameters.foliage.cluster_count"
+                          cluster_spread: "$tree.parameters.foliage.cluster_spread"
+                          radial_spread: "$tree.parameters.foliage.radial_spread"
+                          colour_variation: "$tree.parameters.foliage.colour_variation"
+                        append_to: groups.leaves
+              - set:
+                  leaf_pass:
+                    add: ["$leaf_pass", 1]
+      else:
+        - set:
+            foliage_status: disabled
