@@ -1,3 +1,12 @@
+## 2026-11-19 — Game-ready depth-impostor bake
+
+- Added an offline OpenGL 3.3 baker that captures the complete generated tree from a Fibonacci distribution of view directions.
+- Exported colour/coverage, encoded-normal and RGB24 orthographic-depth atlases with edge gutters and a JSON manifest containing bounds, view vectors and per-view UV rectangles.
+- Default output is a 64-view, 128-pixel-per-view atlas intended for a two-triangle runtime quad; source geometry remains unchanged.
+- Added renderer-independent tests for view sampling, camera basis construction and atlas layout.
+- Documented the bake command, runtime sampling requirements and current limitations.
+- Runtime engine material, depth reprojection, wind animation and shadow representation remain follow-on work.
+ 
 ## 2026-11-17 — Branch attachment integrity and close-detail twigs
 
 - Added crown-boundary insets to branch growth. Terminal twigs and foliage sprays now finish inside the leaf-bearing envelope so bare wood ends are less likely to protrude beyond the crown silhouette.
