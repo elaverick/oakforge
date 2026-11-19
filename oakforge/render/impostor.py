@@ -262,9 +262,15 @@ def bake_depth_impostor(tree, output_directory: str | Path,
             gl.glClearDepth(1.0)
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
             matrix = _orthographic_view_projection(direction, centre, extent, near, far)
-            gl.glUniformMatrix4fv(matrix_location, 1, gl.GL_TRUE, matrix)
+            # Upload explicit column-major data to avoid GL_TRUE transpose wrapper differences.
+            gl.glUniformMatrix4fv(matrix_location, 1, gl.GL_FALSE,
+                                  np.ascontiguousarray(matrix.T, dtype=np.float32))
             gl.glBindVertexArray(vao)
             gl.glDrawArrays(gl.GL_TRIANGLES, 0, len(interleaved))
+            gl.glFinish()
+            draw_error = gl.glGetError()
+            if draw_error != gl.GL_NO_ERROR:
+                raise RuntimeError(f"OpenGL error while drawing impostor view {index}: 0x{draw_error:04x}")
             col = index % settings.atlas_columns
             row = index // settings.atlas_columns
             pitch = settings.tile_size + settings.padding * 2
@@ -294,6 +300,11 @@ def bake_depth_impostor(tree, output_directory: str | Path,
         write_png(output / "colour.png", colour_atlas)
         write_png(output / "normal.png", normal_atlas)
         write_png(output / "depth.png", depth_atlas)
+        # Do not publish a superficially successful bake with empty atlases.
+        if not np.any(colour_atlas[:, :, 3]):
+            raise RuntimeError(
+                "Impostor bake rendered no covered pixels; check the view-projection matrix and GL draw state"
+            )
         manifest = {
             "format": "oakforge-depth-impostor-v1",
             "tree_name": tree.name,
