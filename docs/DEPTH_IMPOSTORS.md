@@ -18,7 +18,7 @@ distribution of full-sphere view directions into three atlases:
 - `depth.png`: orthographic depth packed into RGB24 (big-endian).
 - `manifest.json`: bounds, capture directions, atlas rectangles and settings.
 
-The default asset is 8x8 tiles at 128x128 pixels (1024x1024 per atlas), with
+The default asset is 8x8 tiles at 128x128 pixels (1056x1056 per atlas (including 2px edge gutters around each tile)), with
 64 views. The intended runtime representation is one camera-facing quad: two
 triangles per tree instance, with the view direction selecting nearby atlas
 captures. The manifest contains the exact capture directions and UV rectangles
