@@ -290,20 +290,44 @@ def nearest_view_index(views: list[dict[str, Any]], direction: np.ndarray) -> in
     return indices[0]
 
 
+def _build_spherical_view_triangles(directions: np.ndarray) -> np.ndarray:
+    """Build the capture-direction hull once, rather than once per rendered frame."""
+    if len(directions) <= 3:
+        return np.empty((0, 3), dtype=np.int32)
+    try:
+        from scipy.spatial import ConvexHull
+
+        return np.asarray(ConvexHull(directions).simplices, dtype=np.int32)
+    except Exception:
+        # The runtime has a deterministic top-three fallback if SciPy/Qhull is
+        # unavailable, but do not retry the failing hull build on every frame.
+        return np.empty((0, 3), dtype=np.int32)
+
+
 def select_view_blend(
-    views: list[dict[str, Any]], direction: np.ndarray
+    views: list[dict[str, Any]],
+    direction: np.ndarray,
+    view_directions: np.ndarray | None = None,
+    triangles: np.ndarray | None = None,
 ) -> tuple[list[int], np.ndarray]:
     """Find the spherical triangle containing a direction and its barycentric weights.
 
-    Convex-hull interpolation is continuous at capture boundaries: the weight
-    for the vertex opposite a shared edge reaches zero on that edge.
+    Convex-hull interpolation is continuous at capture boundaries. The renderer
+    passes precomputed directions and hull triangles so frame-time selection
+    does not repeat setup work.
     """
     if len(views) < 3:
         raise ValueError("At least three capture views are required for spherical blending")
     target = np.asarray(direction, dtype=np.float64)
     target /= max(float(np.linalg.norm(target)), 1e-12)
-    directions = np.asarray([view["direction"] for view in views], dtype=np.float64)
-    directions /= np.maximum(np.linalg.norm(directions, axis=1, keepdims=True), 1e-12)
+    if view_directions is None:
+        view_directions = np.asarray(
+            [view["direction"] for view in views], dtype=np.float64
+        )
+        view_directions /= np.maximum(
+            np.linalg.norm(view_directions, axis=1, keepdims=True), 1e-12
+        )
+    directions = view_directions
 
     if len(views) == 3:
         scores = directions @ target
@@ -313,27 +337,21 @@ def select_view_blend(
             weights[:] = 1.0
         return [int(index) for index in indices], weights / np.sum(weights)
 
-    try:
-        from scipy.spatial import ConvexHull
+    if triangles is None:
+        triangles = _build_spherical_view_triangles(directions)
+    for simplex in triangles:
+        basis = directions[np.asarray(simplex)].T
+        try:
+            coefficients = np.linalg.solve(basis, target)
+        except np.linalg.LinAlgError:
+            continue
+        if np.min(coefficients) >= -1e-7:
+            weights = np.clip(coefficients, 0.0, None)
+            total = float(np.sum(weights))
+            if total > 1e-10:
+                return [int(index) for index in simplex], weights / total
 
-        hull = ConvexHull(directions)
-        for simplex in hull.simplices:
-            basis = directions[np.asarray(simplex)].T
-            try:
-                coefficients = np.linalg.solve(basis, target)
-            except np.linalg.LinAlgError:
-                continue
-            if np.min(coefficients) >= -1e-7:
-                weights = np.clip(coefficients, 0.0, None)
-                total = float(np.sum(weights))
-                if total > 1e-10:
-                    return [int(index) for index in simplex], weights / total
-    except Exception:
-        # SciPy is a transitive dependency of scikit-image, but retain a
-        # deterministic fallback if its convex hull cannot be constructed.
-        pass
-
-    # Defensive fallback for an unavailable/degenerate convex hull.
+    # Defensive fallback for unavailable/degenerate hulls.
     scores = directions @ target
     indices = np.argsort(scores)[-3:][::-1]
     weights = np.maximum(scores[indices], 0.0) ** 16
@@ -341,7 +359,6 @@ def select_view_blend(
         weights[:] = 1.0
     weights /= np.sum(weights)
     return [int(index) for index in indices], weights
-
 
 def reconstruct_depth_offset(depth_value: float, near: float, far: float) -> float:
     """Convert normalised orthographic depth to canopy-local displacement."""
@@ -406,6 +423,16 @@ class DepthImpostorRenderer:
         self.near = float(depth_projection["near"])
         self.far = float(depth_projection["far"])
         self.views = self.manifest["views"]
+        self.view_directions = np.asarray(
+            [view["direction"] for view in self.views], dtype=np.float64
+        )
+        self.view_directions /= np.maximum(
+            np.linalg.norm(self.view_directions, axis=1, keepdims=True), 1e-12
+        )
+        self.view_triangles = _build_spherical_view_triangles(self.view_directions)
+        self.view_bases = [
+            view_basis(direction) for direction in self.view_directions
+        ]
         atlas = self.manifest["atlas"]
         self.tile_size = int(atlas["tile_size"])
         self.atlas_columns = int(atlas["columns"])
@@ -575,7 +602,9 @@ class DepthImpostorRenderer:
         gl = self.gl
         camera_position = np.asarray(camera_position, dtype=np.float64)
         camera_direction = camera_position - self.centre
-        view_indices, weights = select_view_blend(self.views, camera_direction)
+        view_indices, weights = select_view_blend(
+            self.views, camera_direction, self.view_directions, self.view_triangles
+        )
         bounds = self._projected_bounds(view_projection)
         if bounds is None:
             return view_indices
@@ -593,8 +622,7 @@ class DepthImpostorRenderer:
         search_radii = []
         camera_normal = camera_direction / max(np.linalg.norm(camera_direction), 1e-12)
         for view_index in view_indices:
-            direction = np.asarray(self.views[view_index]["direction"], dtype=np.float32)
-            view_right, view_up, view_forward = view_basis(direction)
+            view_right, view_up, view_forward = self.view_bases[view_index]
             capture_rights.append(view_right)
             capture_ups.append(view_up)
             capture_forwards.append(view_forward)
