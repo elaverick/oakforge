@@ -162,6 +162,11 @@ class DepthImpostorRenderer:
             raise RuntimeError(
                 "Canopy impostor shader is missing uniforms: " + ", ".join(missing_uniforms)
             )
+        gl.glUseProgram(self.program)
+        gl.glUniform1i(self.uniforms["colour_atlas"], 0)
+        gl.glUniform1i(self.uniforms["normal_atlas"], 1)
+        gl.glUniform1i(self.uniforms["depth_atlas"], 2)
+        gl.glUseProgram(0)
         self.textures: dict[str, int] = {}
         self.texture_bytes = 0
         self.vao = 0
