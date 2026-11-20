@@ -1,3 +1,11 @@
+## 2026-11-20 — Canopy-only depth impostors
+
+- Split foliage mesh construction from the complete tree mesh. Leaves are now the default and only source geometry for depth-impostor baking.
+- Added optional terminal twig and spray tube capture with `--include-twigs`; trunk, roots and structural branch tiers are never included in the canopy atlas.
+- Changed impostor bounds and manifest metadata to describe the canopy source geometry.
+- Added regression tests proving leaves-only capture excludes wood, optional twigs add only terminal detail, and the complete polygon mesh path remains available.
+- Reworked the depth-impostor documentation around the hybrid canopy-impostor plus polygon-wood-LOD arrangement.
+
 ## 2026-11-19 — Game-ready depth-impostor bake
 
 - Added an offline OpenGL 3.3 baker that captures the complete generated tree from a Fibonacci distribution of view directions.
