@@ -134,7 +134,7 @@ class RuntimeImpostorOpenGLTests(unittest.TestCase):
             original_splat_scale = renderer.splat_scale
             # The smoke framebuffer is deliberately small; temporarily enlarge
             # point footprints so the different clipping modes are observable.
-            renderer.splat_scale = 2.6
+            renderer.splat_scale = 6.0
             for style in IMPOSTOR_STYLES:
                 renderer.set_style(style)
                 self.gl.glClear(self.gl.GL_COLOR_BUFFER_BIT | self.gl.GL_DEPTH_BUFFER_BIT)
