@@ -178,7 +178,8 @@ def main() -> int:
         )
         if _is_valid_impostor_cache(
             output_directory, seed, arguments.impostor_views,
-            arguments.impostor_tile_size, len(regenerated_tree.leaves),
+            arguments.impostor_tile_size, arguments.impostor_layers,
+            len(regenerated_tree.leaves),
         ):
             return output_directory
         command = [
