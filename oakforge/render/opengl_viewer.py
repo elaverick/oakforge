@@ -114,6 +114,18 @@ class OpenGLViewer:
         self.canopy_vbo = 0
         self.canopy_vertex_count = 0
         self.canopy_triangle_count = 0
+        # Retain mode-specific readings across representation swaps so users
+        # can compare both variants without relying on a separate spreadsheet.
+        self.representation_metrics: dict[str, dict[str, float | int | None]] = {
+            "polygons": {"triangles": 0, "vertices": 0, "gpu_bytes": 0,
+                         "fps": None, "frame_ms": None, "gpu_ms": None},
+            "impostor": {"triangles": 2, "vertices": 6, "gpu_bytes": 0,
+                         "fps": None, "frame_ms": None, "gpu_ms": None},
+        }
+        self.mode_sample_frames = 0
+        self.mode_sample_seconds = 0.0
+        self.mode_gpu_samples: list[float] = []
+        self.mode_sample_start = time.perf_counter()
         self.canopy_mode = "polygons"
         self.canopy_renderer: DepthImpostorRenderer | None = None
         self.show_leaves = True
@@ -288,10 +300,9 @@ class OpenGLViewer:
             self.wood_vao, self.wood_vbo, mesh, "wood_vbo"
         )
         self.wood_triangle_count = self.wood_vertex_count // 3
-        if not hasattr(self, "source_wood_triangles"):
-            self.source_wood_triangles = self.wood_triangle_count
-            self.model_leaf_triangles = len(self.tree.leaves) * (2 * len(OAK_LEAF_PROFILE) - 1)
-            self.model_total_triangles = self.source_wood_triangles + self.model_leaf_triangles
+        self.source_wood_triangles = self.wood_triangle_count
+        self.model_leaf_triangles = len(self.tree.leaves) * (2 * len(OAK_LEAF_PROFILE) - 1)
+        self.model_total_triangles = self.source_wood_triangles + self.model_leaf_triangles
 
     def _upload_canopy_polygons(self) -> None:
         gl = self.gl
@@ -307,6 +318,11 @@ class OpenGLViewer:
             self.canopy_vao, self.canopy_vbo, mesh, "canopy_vbo"
         )
         self.canopy_triangle_count = self.canopy_vertex_count // 3
+        self.representation_metrics["polygons"].update({
+            "triangles": self.canopy_triangle_count,
+            "vertices": self.canopy_vertex_count,
+            "gpu_bytes": self.gpu_allocations.get("canopy_vbo", 0),
+        })
 
     def _release_canopy_representation(self) -> None:
         gl = self.gl
@@ -327,6 +343,7 @@ class OpenGLViewer:
     def _set_canopy_mode(self, mode: str) -> None:
         if mode not in {"polygons", "impostor"}:
             raise ValueError(f"Unknown canopy representation: {mode}")
+        self._finish_mode_sample()
         self._release_canopy_representation()
         self.canopy_mode = mode
         if not self.show_leaves or self.max_depth < 4:
@@ -337,7 +354,32 @@ class OpenGLViewer:
             renderer = DepthImpostorRenderer(self.gl, self.impostor_directory)
             self.canopy_renderer = renderer
             self.gpu_allocations["canopy_impostor"] = renderer.allocated_bytes
+            self.representation_metrics["impostor"].update({
+                "triangles": 2,
+                "vertices": 6,
+                "gpu_bytes": renderer.allocated_bytes,
+            })
+        self.mode_sample_frames = 0
+        self.mode_sample_seconds = 0.0
+        self.mode_gpu_samples = []
+        self.mode_sample_start = time.perf_counter()
         self.status_message = f"Canopy representation: {mode.upper()}"
+
+    def _finish_mode_sample(self) -> None:
+        """Commit average performance readings for the representation just used."""
+        if self.mode_sample_frames <= 0 or self.mode_sample_seconds <= 0:
+            return
+        metrics = self.representation_metrics[self.canopy_mode]
+        metrics["fps"] = self.mode_sample_frames / self.mode_sample_seconds
+        metrics["frame_ms"] = self.mode_sample_seconds * 1000.0 / self.mode_sample_frames
+        if self.mode_gpu_samples:
+            metrics["gpu_ms"] = sum(self.mode_gpu_samples) / len(self.mode_gpu_samples)
+        resource_name = "canopy_vbo" if self.canopy_mode == "polygons" else "canopy_impostor"
+        metrics["gpu_bytes"] = self.gpu_allocations.get(resource_name, 0)
+
+    @staticmethod
+    def _format_metric(value: float | int | None, suffix: str = "") -> str:
+        return f"{value:.2f}{suffix}" if value is not None else "warming up"
 
     def _upload_grid_mesh(self) -> None:
         mesh = MeshData()
@@ -385,6 +427,9 @@ class OpenGLViewer:
                 if available:
                     nanoseconds = gl.glGetQueryObjectui64v(query, gl.GL_QUERY_RESULT)
                     self.gpu_scene_ms = float(nanoseconds) / 1_000_000.0
+                    self.mode_gpu_samples.append(self.gpu_scene_ms)
+                    if len(self.mode_gpu_samples) > 120:
+                        self.mode_gpu_samples.pop(0)
                     self.gpu_query_pending[index] = False
             except Exception:
                 self.gpu_queries = []
@@ -445,21 +490,35 @@ class OpenGLViewer:
         gpu_frame = f"{self.gpu_scene_ms:.2f} ms" if self.gpu_scene_ms is not None else "n/a"
         frame_ms = f"{self.frame_ms:.2f} ms" if self.frame_ms > 0 else "n/a"
         fps = f"{self.fps:.1f}" if self.fps > 0 else "warming up"
+        polygon = self.representation_metrics["polygons"]
+        impostor = self.representation_metrics["impostor"]
+        polygon_bytes = int(polygon["gpu_bytes"] or 0)
+        impostor_bytes = int(impostor["gpu_bytes"] or 0)
+        allocation_delta = polygon_bytes - impostor_bytes
+        delta_text = (
+            f"{self._format_bytes(abs(allocation_delta))} less for impostor"
+            if allocation_delta >= 0
+            else f"{self._format_bytes(abs(allocation_delta))} more for impostor"
+        )
         lines = [
             "OAKFORGE | CANOPY REPRESENTATION BENCHMARK",
             f"Mode: {active_name}   [I] switch   [L] canopy on/off",
-            f"Model triangles: {self.model_total_triangles:,} total",
-            f"  Wood: {self.source_wood_triangles:,}   Leaf polygons: {self.model_leaf_triangles:,}",
+            f"Source model: {self.model_total_triangles:,} triangles (wood {self.source_wood_triangles:,} + leaves {self.model_leaf_triangles:,})",
             f"Active triangles: {active_triangles:,} (wood {self.wood_triangle_count:,} + canopy {active_canopy_triangles:,})",
             f"OakForge GPU allocations: {self._format_bytes(allocated)} (tracked buffers/textures)",
             f"Canopy allocation: {self._format_bytes(canopy_allocated)}",
+            f"Polygon canopy: {self.model_leaf_triangles:,} source tris | {self._format_bytes(polygon_bytes)} GPU allocation",
+            f"Depth impostor: 2 quad tris | {self._format_bytes(impostor_bytes)} GPU allocation",
+            f"Allocation delta: {delta_text}",
             f"Device VRAM: {self._format_bytes(used)} used / {self._format_bytes(total)} total",
             f"Process VRAM: {self._format_bytes(process)}   GPU load: {str(util) + '%' if util is not None else 'n/a'}",
             f"GPU memory controller: {str(memory_util) + '%' if memory_util is not None else 'n/a'}",
-            f"Performance: {fps} FPS   CPU frame: {frame_ms}   GPU scene: {gpu_frame}",
+            f"Current: {fps} FPS   CPU frame: {frame_ms}   GPU scene: {gpu_frame}",
+            f"Polygon average: {self._format_metric(polygon['fps'], ' FPS')}, {self._format_metric(polygon['frame_ms'], ' ms')} frame, {self._format_metric(polygon['gpu_ms'], ' ms')} GPU",
+            f"Impostor average: {self._format_metric(impostor['fps'], ' FPS')}, {self._format_metric(impostor['frame_ms'], ' ms')} frame, {self._format_metric(impostor['gpu_ms'], ' ms')} GPU",
             f"Telemetry: {telemetry['backend']}   Renderer: {telemetry['gpu_name']}",
             f"Atlas view: {self.last_selected_view + 1 if self.last_selected_view >= 0 else 'n/a'} / {len(self.canopy_renderer.views) if self.canopy_renderer else 'n/a'}",
-            "Keys: I representation | L canopy | 1-5 structure | W wireframe | V VSync | R regenerate",
+            "Keys: I representation | L canopy | 1-5 structure | W wireframe | V VSync | R regenerate | B reset averages",
         ]
         if self.status_message:
             lines.append(self.status_message)
@@ -630,8 +689,26 @@ class OpenGLViewer:
             self.source_wood_triangles = self.wood_triangle_count
             self.model_leaf_triangles = len(self.tree.leaves) * (2 * len(OAK_LEAF_PROFILE) - 1)
             self.model_total_triangles = self.source_wood_triangles + self.model_leaf_triangles
+            self.representation_metrics = {
+                "polygons": {"triangles": self.model_leaf_triangles, "vertices": 0,
+                             "gpu_bytes": 0, "fps": None, "frame_ms": None, "gpu_ms": None},
+                "impostor": {"triangles": 2, "vertices": 6,
+                             "gpu_bytes": 0, "fps": None, "frame_ms": None, "gpu_ms": None},
+            }
             self._set_canopy_mode(previous_mode)
             self.status_message = f"Regenerated seed {self.tree.metadata.get('seed', '?')}"
+        elif key == glfw.KEY_B:
+            self.representation_metrics["polygons"].update(
+                {"fps": None, "frame_ms": None, "gpu_ms": None}
+            )
+            self.representation_metrics["impostor"].update(
+                {"fps": None, "frame_ms": None, "gpu_ms": None}
+            )
+            self.mode_sample_frames = 0
+            self.mode_sample_seconds = 0.0
+            self.mode_gpu_samples = []
+            self.mode_sample_start = time.perf_counter()
+            self.status_message = "Representation benchmark averages reset"
         elif key == glfw.KEY_F:
             self.camera_yaw = math.radians(38.0)
             self.camera_pitch = math.radians(17.0)
@@ -662,6 +739,7 @@ class OpenGLViewer:
         print("  Drag with left mouse button : orbit camera")
         print("  Mouse wheel                 : zoom")
         print("  I                           : toggle polygon leaves / depth impostor")
+        print("  B                           : reset representation benchmark averages")
         print("  L                           : toggle canopy visibility")
         print("  1 / 2 / 3 / 4 / 5           : trunk / primary / secondary / tertiary / full tree")
         print("  W                           : toggle polygon wireframe")
@@ -687,6 +765,8 @@ class OpenGLViewer:
                         else self.frame_ms * 0.88 + instantaneous_ms * 0.12
                     )
                     self.fps = 1000.0 / self.frame_ms
+                    self.mode_sample_frames += 1
+                    self.mode_sample_seconds += delta
                 self.frame_count += 1
                 self._poll_gpu_queries()
 
