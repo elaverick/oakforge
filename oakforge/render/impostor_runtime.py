@@ -160,7 +160,7 @@ void main() {
     sample_screen_footprint = vec4(screen_x, screen_y);
     sample_point_size = clamp(
         max(length(screen_x), length(screen_y)) * 1.15 * splat_scale,
-        1.0, 5.5
+        1.0, 10.0
     );
     gl_PointSize = sample_point_size;
 }
@@ -221,7 +221,12 @@ void main() {
         int side_offset = int(floor(
             hash12(sample_identity.xy + vec2(sample_identity.z * 3.1, 7.7)) * 3.0
         )) - 1;
-        int sides = clamp(polygon_sides + side_offset, 4, 10);
+        // Angularity is a genuine shape control: zero approaches a round
+        // 14-sided footprint, one produces sharply faceted 4-sided clusters.
+        float desired_sides = mix(14.0, 4.0, angularity);
+        int sides = clamp(
+            int(floor(desired_sides + 0.5)) + side_offset, 4, 16
+        );
         float sector = 6.28318530718 / float(sides);
         float angle = atan(point.y, point.x)
             + hash12(sample_identity.xy + vec2(19.1, sample_identity.z)) * 6.28318530718;
@@ -231,7 +236,7 @@ void main() {
         float wave_a = sin(angle * 3.0 + sample_identity.x * 0.071);
         float wave_b = sin(angle * 5.0 + sample_identity.y * 0.053
             + sample_identity.z * 1.7);
-        float irregularity = angularity * (0.09 * wave_a + 0.045 * wave_b);
+        float irregularity = angularity * (0.20 * wave_a + 0.12 * wave_b);
         polygon_limit *= 1.0 + irregularity;
 
         if (shape_mode == 3 && noise_intensity > 0.001) {
@@ -263,9 +268,14 @@ void main() {
             float fine_noise = value_noise(
                 noise_position * noise_scale * 2.35 + vec2(17.0, 9.0)
             );
-            float foliage_noise = mix(broad_noise, fine_noise, 0.32);
-            polygon_limit *= 1.0
-                + (foliage_noise - 0.5) * noise_intensity * 0.72;
+            // Stronger displacement gives the setting visible leverage over
+            // small samples. Clamp the radial limit to avoid vanishing splats
+            // or oversized square-like outliers at maximum strength.
+            float foliage_noise = mix(broad_noise, fine_noise, 0.42);
+            float edge_breakup = (foliage_noise - 0.5) * noise_intensity * 1.05;
+            polygon_limit = clamp(
+                polygon_limit * (1.0 + edge_breakup), 0.28, 1.55
+            );
         }
 
         if (radius > polygon_limit) discard;
@@ -340,11 +350,13 @@ class DepthImpostorRenderer:
     def __init__(self, gl, asset_directory: str | Path) -> None:
         self.gl = gl
         self.style = "foliage"
-        self.angularity = 0.65
-        self.noise_intensity = 0.6
-        self.noise_scale = 8.0
+        # Larger projected footprints are intentional: sub-2px samples do not
+        # have enough fragments for angular/noise shaping to be perceptible.
+        self.angularity = 0.8
+        self.noise_intensity = 1.35
+        self.noise_scale = 28.0
         self.polygon_sides = 6
-        self.splat_scale = 1.3
+        self.splat_scale = 2.6
         self.asset_directory = Path(asset_directory)
         manifest_path = self.asset_directory / "manifest.json"
         if not manifest_path.is_file():
@@ -431,16 +443,21 @@ class DepthImpostorRenderer:
         self.style = style
 
     def adjust_noise_intensity(self, delta: float) -> float:
-        self.noise_intensity = float(np.clip(self.noise_intensity + delta, 0.0, 1.0))
+        self.noise_intensity = float(np.clip(self.noise_intensity + delta, 0.0, 2.5))
         return self.noise_intensity
 
     def adjust_noise_scale(self, delta: float) -> float:
-        self.noise_scale = float(np.clip(self.noise_scale + delta, 0.5, 32.0))
+        self.noise_scale = float(np.clip(self.noise_scale + delta, 1.0, 80.0))
         return self.noise_scale
 
     def adjust_angularity(self, delta: float) -> float:
         self.angularity = float(np.clip(self.angularity + delta, 0.0, 1.0))
         return self.angularity
+
+    def adjust_splat_scale(self, delta: float) -> float:
+        """Adjust the screen-space footprint to expose leaf-cluster shapes."""
+        self.splat_scale = float(np.clip(self.splat_scale + delta, 0.8, 6.0))
+        return self.splat_scale
 
     def _load_array_slices(self, filenames: list[str], mode: str) -> np.ndarray:
         try:
