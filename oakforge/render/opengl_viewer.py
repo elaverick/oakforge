@@ -672,6 +672,9 @@ class OpenGLViewer:
 
     def run(self) -> None:
         gl = self.gl
+        # Exclude procedural generation, atlas baking and GPU uploads from the
+        # first displayed frame-time/FPS sample.
+        self.previous_frame_time = time.perf_counter()
         try:
             while not self.glfw.window_should_close(self.window):
                 frame_start = time.perf_counter()
