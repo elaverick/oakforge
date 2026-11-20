@@ -1,20 +1,24 @@
 """Unit tests for the renderer-independent parts of impostor baking."""
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
+from PIL import Image
 
 from oakforge.render.impostor import (
     ImpostorSettings,
     atlas_dimensions,
     fibonacci_directions,
     view_basis,
+    write_png,
 )
 
 
 class ImpostorMathTests(unittest.TestCase):
     def test_default_atlas_is_eight_by_eight_tiles(self):
-        self.assertEqual(atlas_dimensions(ImpostorSettings()), (1056, 1056))
+        self.assertEqual(atlas_dimensions(ImpostorSettings()), (3104, 3104))
 
     def test_view_directions_are_unit_length_and_distributed(self):
         directions = fibonacci_directions(64)
@@ -31,7 +35,20 @@ class ImpostorMathTests(unittest.TestCase):
 
     def test_invalid_tile_size_is_rejected(self):
         with self.assertRaises(ValueError):
-            atlas_dimensions(ImpostorSettings(tile_size=100))
+            atlas_dimensions(ImpostorSettings(tile_size=24))
+
+    def test_depth_atlas_png_preserves_16_bit_values(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "depth.png"
+            source = np.asarray([[0, 12345, 65535], [65534, 32768, 1]], dtype=np.uint16)
+            write_png(path, source)
+            with Image.open(path) as image:
+                decoded = np.asarray(image).astype(np.uint16)
+            np.testing.assert_array_equal(decoded, source)
+
+    def test_multiple_depth_layers_are_bounded(self):
+        with self.assertRaises(ValueError):
+            atlas_dimensions(ImpostorSettings(layers=5))
 
 
 if __name__ == "__main__":
