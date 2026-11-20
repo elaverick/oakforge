@@ -750,7 +750,7 @@ class OpenGLViewer:
                 if resource:
                     gl.glDeleteBuffers(1, [resource])
             if self.overlay_texture:
-                gl.glDeleteTextures([self.overlay_texture])
+                gl.glDeleteTextures(1, [self.overlay_texture])
             if self.program:
                 gl.glDeleteProgram(self.program)
             if self.overlay_program:
