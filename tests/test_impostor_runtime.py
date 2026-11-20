@@ -5,6 +5,8 @@ import unittest
 import numpy as np
 
 from oakforge.render.impostor_runtime import (
+    IMPOSTOR_STYLES,
+    DepthImpostorRenderer,
     nearest_view_index,
     reconstruct_depth_offset,
 )
@@ -39,6 +41,32 @@ class RuntimeImpostorMathTests(unittest.TestCase):
     def test_empty_view_set_is_rejected(self):
         with self.assertRaises(ValueError):
             nearest_view_index([], np.array([0.0, 1.0, 0.0]))
+
+    def test_impostor_style_modes_and_validation(self):
+        renderer = object.__new__(DepthImpostorRenderer)
+        for style in IMPOSTOR_STYLES:
+            renderer.set_style(style)
+            self.assertEqual(renderer.style, style)
+        with self.assertRaises(ValueError):
+            renderer.set_style("blur")
+
+    def test_live_foliage_controls_are_clamped(self):
+        renderer = object.__new__(DepthImpostorRenderer)
+        renderer.noise_intensity = 0.6
+        renderer.noise_scale = 8.0
+        renderer.angularity = 0.65
+
+        self.assertAlmostEqual(renderer.adjust_noise_intensity(0.2), 0.8)
+        self.assertEqual(renderer.adjust_noise_intensity(5.0), 1.0)
+        self.assertEqual(renderer.adjust_noise_intensity(-5.0), 0.0)
+
+        self.assertAlmostEqual(renderer.adjust_noise_scale(-0.5), 7.5)
+        self.assertEqual(renderer.adjust_noise_scale(-20.0), 0.5)
+        self.assertEqual(renderer.adjust_noise_scale(100.0), 32.0)
+
+        self.assertAlmostEqual(renderer.adjust_angularity(0.1), 0.75)
+        self.assertEqual(renderer.adjust_angularity(-5.0), 0.0)
+        self.assertEqual(renderer.adjust_angularity(5.0), 1.0)
 
 
 
