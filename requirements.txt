@@ -8,3 +8,9 @@ PyOpenGL>=3.1
 
 # Smooth implicit unions for integrated trunk, root and major-limb geometry
 scikit-image>=0.22
+
+# Atlas loading and the viewer diagnostics panel
+Pillow>=10.0
+
+# NVIDIA VRAM/utilisation/process telemetry (the viewer has OpenGL fallbacks)
+nvidia-ml-py>=12.0
