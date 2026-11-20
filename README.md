@@ -15,7 +15,7 @@ The current English-oak recipe generates one trunk, seven main buttress roots, t
 - **Twig tool** — creates the terminal shoots that carry foliage.
 - **Oak foliage tool** — scatters individually oriented, lobed oak leaves in grouped whorls along terminal twigs and inner-canopy sprays, with configurable radial spread and colour variation.
 - **Wood-surface tool** — fuses the trunk, roots and coarse limbs into one continuous implicit surface.
-- **Packed mesh builder** — creates capped branch tubes and lobed leaf polygons in compact float buffers. Fine branches use higher radial resolution, and leaf polygons are assembled in bounded batches to avoid a large temporary allocation.
+- **Packed mesh builders** — expose separate polygon wood (`build_wood_mesh`), foliage (`build_foliage_mesh`) and complete legacy (`build_tree_mesh`) meshes. Terminal twigs/sprays can be routed to either the polygon mesh or canopy impostor.
 - **Canopy depth-impostor baker** — captures leaves into multi-view colour, normal and depth atlases, with optional terminal twig/spray capture. Structural wood remains a separate polygon mesh for conventional LOD.
 - **YAML recipe engine** — calls named tools and controls their execution order.
 - **OpenGL viewer** — shaded polygons, orbit camera, zoom, hierarchy inspection, wireframe and seed regeneration.
