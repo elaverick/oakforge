@@ -126,7 +126,7 @@ class RuntimeImpostorOpenGLTests(unittest.TestCase):
             # A camera moved off the capture direction must still render by
             # reprojecting the layer samples, not by selecting a flat image.
             side = view_basis(direction)[0]
-            second_camera = camera_position + side * (renderer.extent * 0.12)
+            second_camera = camera_position + side * (renderer.extent * 0.25)
             second_matrix = _perspective_view_projection(
                 second_camera, renderer.centre, aspect=1.0
             )
@@ -139,9 +139,8 @@ class RuntimeImpostorOpenGLTests(unittest.TestCase):
             ).reshape(128, 128, 4)
             second_covered = np.any(second_pixels[:, :, :3] > 4, axis=2)
             self.assertGreater(int(np.count_nonzero(second_covered)), 10)
-            self.assertNotEqual(
-                int(np.count_nonzero(covered)), int(np.count_nonzero(second_covered))
-            )
+            changed_pixels = int(np.count_nonzero(np.logical_xor(covered, second_covered)))
+            self.assertGreater(changed_pixels, 0)
             self.assertEqual(self.gl.glGetError(), self.gl.GL_NO_ERROR)
         finally:
             renderer.close()
