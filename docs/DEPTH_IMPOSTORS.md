@@ -111,7 +111,7 @@ Live controls (available while the depth impostor is active):
 - **[ / ]** decrease or increase edge-noise strength (0 to 2.5).
 - **, / .** decrease or increase noise scale (1 to 80).
 - **- / =** decrease or increase angularity (rounder to more faceted).
-- **PageDown / PageUp** decrease or increase the projected splat footprint.
+- **Z / X** decrease or increase the projected splat footprint.
 
 The default is foliage style with a larger projected footprint, stronger
 multi-scale edge noise and high angularity. These defaults are deliberately
