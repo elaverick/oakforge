@@ -18,7 +18,7 @@ from oakforge.core.mesh import (
 )
 from oakforge.core.models import TreeModel
 from oakforge.render.gpu_metrics import GpuTelemetry
-from oakforge.render.impostor_runtime import DepthImpostorRenderer
+from oakforge.render.impostor_runtime import IMPOSTOR_STYLES, DepthImpostorRenderer
 
 
 def _average_frame_metrics(
@@ -552,6 +552,14 @@ class OpenGLViewer:
             else "n/a"
         )
         gpu_frame = f"{self.gpu_scene_ms:.2f} ms" if self.gpu_scene_ms is not None else "n/a"
+        if self.canopy_renderer is not None:
+            renderer = self.canopy_renderer
+            appearance = (
+                f"{renderer.style.upper()} | angularity {renderer.angularity:.2f} "
+                f"| noise {renderer.noise_intensity:.2f} @ {renderer.noise_scale:.1f}"
+            )
+        else:
+            appearance = "inactive (switch to depth impostor with I)"
         frame_ms = f"{self.frame_ms:.2f} ms" if self.frame_ms > 0 else "n/a"
         fps = f"{self.fps:.1f}" if self.fps > 0 else "warming up"
 
@@ -585,6 +593,8 @@ class OpenGLViewer:
             f"Impostor average: {self._format_metric(impostor['fps'], ' FPS')}, {self._format_metric(impostor['frame_ms'], ' ms')} frame, {self._format_metric(impostor['gpu_ms'], ' ms')} GPU",
             f"Telemetry: {telemetry['backend']}   Renderer: {telemetry['gpu_name']}",
             f"Atlas view: {atlas_view}",
+            f"Impostor style: {appearance}",
+            "Appearance: C cycle | [/] noise strength | ,/. noise scale | -/= angularity",
             "Keys: I representation | L canopy | 1-5 structure | W wireframe | V VSync | R regenerate | B reset averages",
         ]
         if self.status_message:
@@ -737,6 +747,35 @@ class OpenGLViewer:
             except Exception as error:
                 self.status_message = f"Impostor switch failed: {error}"
                 print(self.status_message)
+        elif key == glfw.KEY_C:
+            if self.canopy_renderer is not None:
+                current = IMPOSTOR_STYLES.index(self.canopy_renderer.style)
+                style = IMPOSTOR_STYLES[(current + 1) % len(IMPOSTOR_STYLES)]
+                self.canopy_renderer.set_style(style)
+                self.status_message = f"Impostor style: {style.upper()}"
+            else:
+                self.status_message = "Switch to the depth impostor with I to change foliage style"
+        elif key in (glfw.KEY_LEFT_BRACKET, glfw.KEY_RIGHT_BRACKET):
+            if self.canopy_renderer is not None:
+                delta = -0.1 if key == glfw.KEY_LEFT_BRACKET else 0.1
+                value = self.canopy_renderer.adjust_noise_intensity(delta)
+                self.status_message = f"Foliage noise intensity: {value:.2f}"
+            else:
+                self.status_message = "Switch to the depth impostor with I to tune foliage noise"
+        elif key in (glfw.KEY_COMMA, glfw.KEY_PERIOD):
+            if self.canopy_renderer is not None:
+                delta = -0.5 if key == glfw.KEY_COMMA else 0.5
+                value = self.canopy_renderer.adjust_noise_scale(delta)
+                self.status_message = f"Foliage noise scale: {value:.1f}"
+            else:
+                self.status_message = "Switch to the depth impostor with I to tune foliage noise"
+        elif key in (glfw.KEY_MINUS, glfw.KEY_EQUAL):
+            if self.canopy_renderer is not None:
+                delta = -0.1 if key == glfw.KEY_MINUS else 0.1
+                value = self.canopy_renderer.adjust_angularity(delta)
+                self.status_message = f"Foliage angularity: {value:.2f}"
+            else:
+                self.status_message = "Switch to the depth impostor with I to tune foliage shape"
         elif key == glfw.KEY_L:
             self.show_leaves = not self.show_leaves
             self._set_canopy_mode(self.canopy_mode)
@@ -812,6 +851,10 @@ class OpenGLViewer:
         print("  Drag with left mouse button : orbit camera")
         print("  Mouse wheel                 : zoom")
         print("  I                           : toggle polygon leaves / depth impostor")
+        print("  C                           : cycle square / round / angular / foliage splats")
+        print("  [ / ]                       : decrease / increase foliage edge-noise strength")
+        print("  , / .                       : decrease / increase foliage noise scale")
+        print("  - / =                       : decrease / increase angularity")
         print("  B                           : reset representation benchmark averages")
         print("  L                           : toggle canopy visibility")
         print("  1 / 2 / 3 / 4 / 5           : trunk / primary / secondary / tertiary / full tree")
