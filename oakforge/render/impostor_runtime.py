@@ -294,8 +294,16 @@ def select_view_blend(
     directions = np.asarray([view["direction"] for view in views], dtype=np.float64)
     directions /= np.maximum(np.linalg.norm(directions, axis=1, keepdims=True), 1e-12)
 
+    if len(views) == 3:
+        scores = directions @ target
+        indices = np.argsort(scores)[-3:][::-1]
+        weights = np.maximum(scores[indices], 0.0) ** 16
+        if float(np.sum(weights)) <= 1e-12:
+            weights[:] = 1.0
+        return [int(index) for index in indices], weights / np.sum(weights)
+
     try:
-        from scipy.spatial import ConvexHull
+        from scipy.spatial import ConvexHull, QhullError
 
         hull = ConvexHull(directions)
         for simplex in hull.simplices:
@@ -309,7 +317,7 @@ def select_view_blend(
                 total = float(np.sum(weights))
                 if total > 1e-10:
                     return [int(index) for index in simplex], weights / total
-    except (ImportError, ValueError):
+    except (ImportError, ValueError, QhullError):
         pass
 
     # Defensive fallback for an unavailable/degenerate convex hull.
