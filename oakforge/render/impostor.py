@@ -496,7 +496,7 @@ def main() -> int:
     parser.add_argument("--config", default="configs/english_oak.yaml")
     parser.add_argument("--output", default="build/impostor")
     parser.add_argument("--views", type=int, default=64)
-    parser.add_argument("--tile-size", type=int, default=384)
+    parser.add_argument("--tile-size", type=int, default=512)
     parser.add_argument("--columns", type=int, default=8)
     parser.add_argument("--layers", type=int, default=4, help="Depth-peeling layers per capture (1-4)")
     parser.add_argument("--seed", type=int, help="Override the recipe seed for this bake")
