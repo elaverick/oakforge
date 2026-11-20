@@ -70,6 +70,7 @@ Viewer controls:
 | `[` / `]` | Decrease / increase impostor foliage noise strength |
 | `,` / `.` | Decrease / increase impostor foliage noise scale |
 | `-` / `=` | Decrease / increase impostor angularity |
+| `PageDown` / `PageUp` | Decrease / increase impostor splat footprint size |
 | `L` | Toggle canopy visibility |
 | `W` | Toggle polygon wireframe |
 | `V` | Toggle VSync (off by default for benchmarking) |
