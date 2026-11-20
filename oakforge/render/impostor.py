@@ -28,7 +28,7 @@ class ImpostorSettings:
     """Layered capture quality. Modern GL supports non-power-of-two texture sizes."""
 
     views: int = 64
-    tile_size: int = 384
+    tile_size: int = 512
     atlas_columns: int = 8
     padding: int = 2
     layers: int = 4
