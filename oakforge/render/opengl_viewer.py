@@ -126,6 +126,7 @@ class OpenGLViewer:
         self.mode_sample_seconds = 0.0
         self.mode_gpu_samples: list[float] = []
         self.mode_sample_start = time.perf_counter()
+        self.mode_sample_generation = 0
         self.canopy_mode = "polygons"
         self.canopy_renderer: DepthImpostorRenderer | None = None
         self.show_leaves = True
@@ -343,7 +344,8 @@ class OpenGLViewer:
     def _set_canopy_mode(self, mode: str) -> None:
         if mode not in {"polygons", "impostor"}:
             raise ValueError(f"Unknown canopy representation: {mode}")
-        self._finish_mode_sample()
+        if mode != self.canopy_mode:
+            self._finish_mode_sample()
         self._release_canopy_representation()
         self.canopy_mode = mode
         if not self.show_leaves or self.max_depth < 4:
@@ -363,6 +365,7 @@ class OpenGLViewer:
         self.mode_sample_seconds = 0.0
         self.mode_gpu_samples = []
         self.mode_sample_start = time.perf_counter()
+        self.mode_sample_generation += 1
         self.status_message = f"Canopy representation: {mode.upper()}"
 
     def _finish_mode_sample(self) -> None:
