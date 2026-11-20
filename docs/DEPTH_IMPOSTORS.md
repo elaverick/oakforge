@@ -45,24 +45,27 @@ can place the canopy impostor relative to the separately rendered wood mesh.
 
 ## Hybrid runtime arrangement
 
-1. Render the trunk, roots and structural branches using conventional polygon
-   LOD. OakForge's existing `build_tree_mesh` remains the complete polygon-mesh
-   path.
+1. Build the polygon wood asset with `build_wood_mesh(tree)`. This excludes
+   leaf polygons but retains all branch tiers for conventional LOD.
 2. Render the leaf impostor as a separate canopy representation, aligned using
    the canopy bounds in `manifest.json`.
-3. Compute the direction from the canopy centre to the camera in tree-local
+3. When using `--include-twigs`, call
+   `build_wood_mesh(tree, include_terminal_twigs=False)` so terminal twigs and
+   sprays are not drawn twice. The `build_tree_mesh` function remains the
+   complete legacy path for the existing viewer and OBJ export.
+4. Compute the direction from the canopy centre to the camera in tree-local
    space.
-4. Find the three capture directions with the largest dot products.
-5. Sample their colour, depth and normal tiles and blend by normalised
+5. Find the three capture directions with the largest dot products.
+6. Sample their colour, depth and normal tiles and blend by normalised
    positive dot-product weights. Use a denser bake if angular transitions are
    too visible.
-6. Use depth for depth-aware UV correction (parallax/relief intersection) and
+7. Use depth for depth-aware UV correction (parallax/relief intersection) and
    write reconstructed fragment depth where the engine supports it. A plain
    blended billboard is a useful first integration, but does not provide the
    full parallax benefit of a depth impostor.
-7. Use captured normals for approximate lighting. For moving sun directions,
+8. Use captured normals for approximate lighting. For moving sun directions,
    keep albedo unlit and apply the game's lighting model to the captured normal.
-8. Keep shadows on the polygon wood geometry or use a separate low-cost canopy
+9. Keep shadows on the polygon wood geometry or use a separate low-cost canopy
    shadow proxy; the colour/depth atlas is not automatically a correct dynamic
    shadow caster.
 
