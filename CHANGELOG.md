@@ -1,3 +1,13 @@
+## 2026-11-20 — Interactive canopy representation benchmark
+
+- Added an `I` hotkey to switch the live viewer between genuine leaf polygons and the depth-impostor atlas, keeping the trunk and branch mesh identical between modes.
+- Added runtime atlas loading, nearest-view selection and per-fragment depth reconstruction into the scene depth buffer.
+- Added a live diagnostics overlay for source/active triangle counts, canopy-specific and total tracked GPU allocations, device/process VRAM, GPU utilisation, FPS, frame interval and asynchronous GPU scene time.
+- Added optional NVIDIA NVML telemetry through `nvidia-ml-py`, with an OpenGL VRAM query fallback and explicit `n/a` reporting for unavailable metrics.
+- Added automatic recipe/seed/quality-keyed atlas caching for the viewer and re-baking when regenerating a tree.
+- Added an Xvfb-backed runtime OpenGL shader/draw smoke test alongside the existing bake and unit-test workflow.
+- The runtime currently uses nearest-view selection without cross-view blending; validate angular transitions and depth edges before production engine integration.
+
 ## 2026-11-20 — Canopy-only depth impostors
 
 - Split foliage mesh construction from the complete tree mesh. Leaves are now the default and only source geometry for depth-impostor baking.
