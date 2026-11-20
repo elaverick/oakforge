@@ -132,7 +132,7 @@ class DepthImpostorRenderer:
         if not manifest_path.is_file():
             raise FileNotFoundError(f"Canopy impostor manifest not found: {manifest_path}")
         self.manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if self.manifest.get("format") != "oakforge-canopy-depth-impostor-v1":
+        if self.manifest.get("format") != "oakforge-canopy-depth-impostor-v2":
             raise ValueError("Unsupported canopy impostor format")
         if not self.manifest.get("views"):
             raise ValueError("Canopy impostor has no capture views")
