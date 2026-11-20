@@ -231,6 +231,13 @@ class OpenGLViewer:
 
     def _create_shader_program(self, vertex_source: str, fragment_source: str) -> None:
         self.program = self._compile_program(vertex_source, fragment_source)
+        uniform_names = ("model_matrix", "view_matrix", "projection_matrix")
+        self.tree_uniforms = {
+            name: int(self.gl.glGetUniformLocation(self.program, name))
+            for name in uniform_names
+        }
+        if any(location < 0 for location in self.tree_uniforms.values()):
+            raise RuntimeError("The tree shader is missing a required matrix uniform")
 
     def _create_buffers(self) -> None:
         self.wood_vao = int(self.gl.glGenVertexArrays(1))
@@ -480,6 +487,11 @@ class OpenGLViewer:
         gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
         gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
         gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+        gl.glUseProgram(self.overlay_program)
+        self.overlay_sampler_location = int(
+            gl.glGetUniformLocation(self.overlay_program, "overlay_texture")
+        )
+        gl.glUniform1i(self.overlay_sampler_location, 0)
         gl.glBindVertexArray(self.overlay_vao)
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.overlay_vbo)
         stride = 4 * 4
@@ -541,7 +553,6 @@ class OpenGLViewer:
         gl.glUseProgram(self.overlay_program)
         gl.glActiveTexture(gl.GL_TEXTURE0)
         gl.glBindTexture(gl.GL_TEXTURE_2D, self.overlay_texture)
-        gl.glUniform1i(gl.glGetUniformLocation(self.overlay_program, "overlay_texture"), 0)
         gl.glBindVertexArray(self.overlay_vao)
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
         gl.glBindVertexArray(0)
@@ -706,8 +717,9 @@ class OpenGLViewer:
                     ("view_matrix", view_matrix),
                     ("projection_matrix", projection_matrix),
                 ):
-                    location = gl.glGetUniformLocation(self.program, uniform_name)
-                    gl.glUniformMatrix4fv(location, 1, gl.GL_TRUE, matrix)
+                    gl.glUniformMatrix4fv(
+                        self.tree_uniforms[uniform_name], 1, gl.GL_TRUE, matrix
+                    )
 
                 gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
                 gl.glBindVertexArray(self.grid_vao)
