@@ -746,6 +746,8 @@ class OpenGLViewer:
                         else self.frame_ms * 0.88 + instantaneous_ms * 0.12
                     )
                     self.fps = 1000.0 / self.frame_ms
+                    self.mode_sample_frames += 1
+                    self.mode_sample_seconds += delta
                 self.frame_count += 1
                 self._poll_gpu_queries()
 
