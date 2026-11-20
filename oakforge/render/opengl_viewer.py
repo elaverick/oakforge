@@ -669,13 +669,33 @@ class OpenGLViewer:
             self.source_wood_triangles = self.wood_triangle_count
             self.model_leaf_triangles = len(self.tree.leaves) * (2 * len(OAK_LEAF_PROFILE) - 1)
             self.model_total_triangles = self.source_wood_triangles + self.model_leaf_triangles
+            self.representation_metrics = {
+                "polygons": {"triangles": 0, "vertices": 0, "gpu_bytes": 0,
+                             "fps": None, "frame_ms": None, "gpu_ms": None},
+                "impostor": {"triangles": 2, "vertices": 6, "gpu_bytes": 0,
+                             "fps": None, "frame_ms": None, "gpu_ms": None},
+            }
             self._set_canopy_mode(previous_mode)
             self.status_message = f"Regenerated seed {self.tree.metadata.get('seed', '?')}"
+        elif key == glfw.KEY_B:
+            self._finish_mode_sample()
+            self.representation_metrics["polygons"].update(
+                {"fps": None, "frame_ms": None, "gpu_ms": None}
+            )
+            self.representation_metrics["impostor"].update(
+                {"fps": None, "frame_ms": None, "gpu_ms": None}
+            )
+            self.mode_sample_frames = 0
+            self.mode_sample_seconds = 0.0
+            self.mode_gpu_samples = []
+            self.mode_sample_generation += 1
+            self.status_message = "Representation benchmark averages reset"
         elif key == glfw.KEY_F:
             self.camera_yaw = math.radians(38.0)
             self.camera_pitch = math.radians(17.0)
             self.camera_distance = self.default_camera_distance
             self.camera_target = self.default_camera_target.copy()
+
 
     def _on_mouse_button(self, window: Any, button: int, action: int, modifiers: int) -> None:
         if button == self.glfw.MOUSE_BUTTON_LEFT:
