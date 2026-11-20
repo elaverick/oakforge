@@ -18,7 +18,7 @@ The current English-oak recipe generates one trunk, seven main buttress roots, t
 - **Packed mesh builders** — expose separate polygon wood (`build_wood_mesh`), foliage (`build_foliage_mesh`) and complete legacy (`build_tree_mesh`) meshes. Terminal twigs/sprays can be routed to either the polygon mesh or canopy impostor.
 - **Canopy depth-impostor baker** — captures leaves into multi-view colour, normal and depth atlases, with optional terminal twig/spray capture. Structural wood remains a separate polygon mesh for conventional LOD.
 - **YAML recipe engine** — calls named tools and controls their execution order.
-- **OpenGL viewer** — shaded polygons, orbit camera, zoom, hierarchy inspection, wireframe and seed regeneration.
+- **OpenGL viewer** — shaded polygons, orbit camera, zoom, hierarchy inspection, polygon/impostor canopy toggle, live model/GPU diagnostics, wireframe and seed regeneration.
 - **OBJ exporter** — writes the generated geometry for inspection in Blender or another 3D package.
 
 All source files are separated by responsibility under `oakforge/`. The default oak's structure and all tool inputs are declared in `configs/english_oak.yaml`.
@@ -65,9 +65,11 @@ Viewer controls:
 | `3` | Add secondary branches |
 | `4` | Add tertiary branches |
 | `5` | Full tree, including terminal twigs and leaves |
-| `L` | Toggle leaves |
-| `W` | Toggle wireframe |
-| `R` | Regenerate using the next random seed |
+| `I` | Toggle canopy between genuine leaf polygons and the depth impostor |
+| `L` | Toggle canopy visibility |
+| `W` | Toggle polygon wireframe |
+| `V` | Toggle VSync (off by default for benchmarking) |
+| `R` | Regenerate using the next random seed and bake its canopy |
 | `F` | Reset the camera |
 | `Escape` | Close the viewer |
 
@@ -79,7 +81,9 @@ Bake the leaves separately from the polygon-based trunk and branches:
 python -m oakforge.render.impostor --config configs/english_oak.yaml --output build/english_oak_canopy
 ```
 
-The default captures leaves only. Add `--include-twigs` to capture the terminal twig and spray tubes too; compare the result at the target game resolution before keeping them. See [the canopy impostor notes](docs/DEPTH_IMPOSTORS.md) for atlas layout and runtime integration guidance.
+The default captures leaves only. The interactive viewer automatically bakes and caches a 64-view, 256px-per-view canopy atlas the first time a recipe/seed is opened. Use `--impostor-views` and `--impostor-tile-size` to change that quality. Add `--include-twigs` to the standalone bake command to capture terminal twig and spray tubes too.
+
+Press `I` in the viewer to switch between the leaf polygons and the depth impostor. The diagnostics panel reports source-model triangle counts, active triangles, OakForge's tracked GPU allocations, device VRAM, process VRAM where NVML supports it, GPU utilisation, FPS, frame time and GPU scene time. VSync is off by default so the two modes can be benchmarked without a 60Hz cap. Install `nvidia-ml-py` (included in requirements) for NVIDIA device/process telemetry; OpenGL VRAM querying is used as a fallback when available. See [the canopy impostor notes](docs/DEPTH_IMPOSTORS.md) for details and metric definitions.
 
 ## Generate without a graphics window
 
