@@ -46,6 +46,8 @@ flat out vec3 sample_local_position;
 flat out vec3 sample_footprint_x;
 flat out vec3 sample_footprint_y;
 flat out vec3 sample_identity;
+flat out vec4 sample_screen_footprint;
+flat out float sample_point_size;
 
 vec3 reconstruct_pixel(ivec2 pixel, int slice_index) {
     float depth_value = texelFetch(
@@ -82,6 +84,8 @@ void main() {
         sample_footprint_x = vec3(0.0);
         sample_footprint_y = vec3(0.0);
         sample_identity = vec3(vec2(pixel), float(layer_index));
+        sample_screen_footprint = vec4(0.0);
+        sample_point_size = 0.0;
         return;
     }
 
@@ -96,6 +100,8 @@ void main() {
         sample_footprint_x = vec3(0.0);
         sample_footprint_y = vec3(0.0);
         sample_identity = vec3(vec2(pixel), float(layer_index));
+        sample_screen_footprint = vec4(0.0);
+        sample_point_size = 0.0;
         return;
     }
     gl_Position = clip_position;
@@ -137,23 +143,24 @@ void main() {
     sample_footprint_y = world_y - world_position;
     vec4 clip_x = view_projection * vec4(world_x, 1.0);
     vec4 clip_y = view_projection * vec4(world_y, 1.0);
-    float footprint_x = 1.0;
-    float footprint_y = 1.0;
+    vec2 screen_x = vec2(1.0, 0.0);
+    vec2 screen_y = vec2(0.0, 1.0);
     if (clip_x.w > 0.00001) {
-        footprint_x = length(
-            (clip_x.xy / clip_x.w - clip_position.xy / clip_position.w)
-            * viewport_size * 0.5
-        );
+        screen_x = (
+            clip_x.xy / clip_x.w - clip_position.xy / clip_position.w
+        ) * viewport_size * 0.5;
     }
     if (clip_y.w > 0.00001) {
-        footprint_y = length(
-            (clip_y.xy / clip_y.w - clip_position.xy / clip_position.w)
-            * viewport_size * 0.5
-        );
+        screen_y = (
+            clip_y.xy / clip_y.w - clip_position.xy / clip_position.w
+        ) * viewport_size * 0.5;
     }
-    gl_PointSize = clamp(
-        max(footprint_x, footprint_y) * 1.15 * splat_scale, 1.0, 5.5
+    sample_screen_footprint = vec4(screen_x, screen_y);
+    sample_point_size = clamp(
+        max(length(screen_x), length(screen_y)) * 1.15 * splat_scale,
+        1.0, 5.5
     );
+    gl_PointSize = sample_point_size;
 }
 """
 
@@ -165,6 +172,8 @@ flat in vec3 sample_local_position;
 flat in vec3 sample_footprint_x;
 flat in vec3 sample_footprint_y;
 flat in vec3 sample_identity;
+flat in vec4 sample_screen_footprint;
+flat in float sample_point_size;
 
 uniform int shape_mode;
 uniform int polygon_sides;
@@ -224,9 +233,24 @@ void main() {
         polygon_limit *= 1.0 + irregularity;
 
         if (shape_mode == 3 && noise_intensity > 0.001) {
-            vec3 local_position = sample_local_position
-                + (gl_PointCoord.x - 0.5) * sample_footprint_x
-                + (gl_PointCoord.y - 0.5) * sample_footprint_y;
+            vec2 screen_delta = (
+                gl_PointCoord - vec2(0.5)
+            ) * sample_point_size;
+            vec2 screen_x = sample_screen_footprint.xy;
+            vec2 screen_y = sample_screen_footprint.zw;
+            float footprint_determinant =
+                screen_x.x * screen_y.y - screen_y.x * screen_x.y;
+            vec3 local_position = sample_local_position;
+            if (abs(footprint_determinant) > 0.00001) {
+                float source_x = (
+                    screen_delta.x * screen_y.y - screen_delta.y * screen_y.x
+                ) / footprint_determinant;
+                float source_y = (
+                    screen_x.x * screen_delta.y - screen_x.y * screen_delta.x
+                ) / footprint_determinant;
+                local_position += source_x * sample_footprint_x
+                    + source_y * sample_footprint_y;
+            }
             // An oblique 2-D projection of canopy-local XYZ keeps the pattern
             // attached to the tree while avoiding screen-space crawling.
             vec2 noise_position = vec2(
