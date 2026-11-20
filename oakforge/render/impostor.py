@@ -25,25 +25,27 @@ from oakforge.generation import generate_from_file
 
 @dataclass(frozen=True)
 class ImpostorSettings:
-    """Bake quality and atlas layout. Defaults favour inexpensive game assets."""
+    """Layered capture quality. Modern GL supports non-power-of-two texture sizes."""
 
     views: int = 64
-    tile_size: int = 128
+    tile_size: int = 384
     atlas_columns: int = 8
     padding: int = 2
+    layers: int = 4
     elevation_bias: float = 0.0
     include_twigs: bool = False
 
     def validate(self) -> None:
         if self.views < 8:
             raise ValueError("At least 8 views are required for a useful full-rotation impostor")
-        if self.tile_size < 16 or self.tile_size & (self.tile_size - 1):
-            raise ValueError("tile_size must be a power of two and at least 16")
+        if self.tile_size < 32:
+            raise ValueError("tile_size must be at least 32 pixels")
         if self.atlas_columns < 1:
             raise ValueError("atlas_columns must be positive")
+        if not 1 <= self.layers <= 4:
+            raise ValueError("layers must be between 1 and 4")
         if self.padding < 0 or self.padding * 2 >= self.tile_size:
             raise ValueError("padding must be non-negative and smaller than half a tile")
-
 
 def fibonacci_directions(count: int, elevation_bias: float = 0.0) -> np.ndarray:
     """Return evenly distributed unit view directions around the complete tree."""
@@ -89,14 +91,22 @@ def _png_chunk(kind: bytes, data: bytes) -> bytes:
 
 
 def write_png(path: Path, pixels: np.ndarray) -> None:
-    """Write an RGB or RGBA uint8 image without adding an imaging dependency."""
-    image = np.asarray(pixels, dtype=np.uint8)
-    if image.ndim != 3 or image.shape[2] not in (3, 4):
-        raise ValueError("PNG pixels must have shape (height, width, 3|4)")
-    height, width, channels = image.shape
-    colour_type = 2 if channels == 3 else 6
-    scanlines = b"".join(b"\x00" + image[row].tobytes() for row in range(height))
-    header = struct.pack(">IIBBBBB", width, height, 8, colour_type, 0, 0, 0)
+    """Write RGB/RGBA uint8 images and single-channel uint16 depth images."""
+    image = np.asarray(pixels)
+    if image.ndim == 2 and image.dtype == np.uint16:
+        height, width = image.shape
+        bit_depth, colour_type = 16, 0
+        scanlines = b"".join(
+            b"\x00" + image[row].astype(">u2", copy=False).tobytes()
+            for row in range(height)
+        )
+    elif image.ndim == 3 and image.shape[2] in (3, 4) and image.dtype == np.uint8:
+        height, width, channels = image.shape
+        bit_depth, colour_type = 8, 2 if channels == 3 else 6
+        scanlines = b"".join(b"\x00" + image[row].tobytes() for row in range(height))
+    else:
+        raise ValueError("PNG pixels must be RGB/RGBA uint8 or greyscale uint16")
+    header = struct.pack(">IIBBBBB", width, height, bit_depth, colour_type, 0, 0, 0)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(
         b"\x89PNG\r\n\x1a\n"
@@ -104,7 +114,6 @@ def write_png(path: Path, pixels: np.ndarray) -> None:
         + _png_chunk(b"IDAT", zlib.compress(scanlines, 6))
         + _png_chunk(b"IEND", b"")
     )
-
 
 VERTEX_SHADER = """#version 330 core
 layout(location=0) in vec3 position;
@@ -125,10 +134,21 @@ in vec3 v_normal;
 in vec3 v_colour;
 layout(location=0) out vec4 out_colour;
 layout(location=1) out vec4 out_normal;
+layout(location=2) out float out_depth;
+uniform sampler2D previous_depth;
+uniform int has_previous_depth;
+uniform int tile_size;
+uniform float peel_epsilon;
 void main() {
+    if (has_previous_depth != 0) {
+        vec2 pixel_uv = gl_FragCoord.xy / float(tile_size);
+        float previous = texture(previous_depth, pixel_uv).r;
+        if (gl_FragCoord.z <= previous + peel_epsilon) discard;
+    }
     vec3 n = normalize(gl_FrontFacing ? v_normal : -v_normal);
     out_colour = vec4(v_colour, 1.0);
     out_normal = vec4(n * 0.5 + 0.5, 1.0);
+    out_depth = gl_FragCoord.z;
 }
 """
 
