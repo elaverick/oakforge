@@ -1,8 +1,8 @@
-"""Offline multi-view depth-impostor baking for game-ready tree assets.
+"""Offline multi-view depth-impostor baking for game-ready tree canopies.
 
-The source tree remains fully procedural. This module renders it once from a
-small set of directions and writes colour, encoded-normal and linear-depth
-atlases plus a JSON manifest. Runtime rendering needs only one quad per tree.
+The source tree remains fully procedural. This module captures the leaf canopy
+(and optionally terminal twigs/sprays) into colour, encoded-normal and depth
+atlases. Structural wood remains polygon geometry for conventional LOD.
 """
 
 from __future__ import annotations
