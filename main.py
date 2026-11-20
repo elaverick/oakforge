@@ -41,8 +41,8 @@ def parse_arguments() -> argparse.Namespace:
         help="Number of canopy capture directions used by the interactive viewer (default: 64).",
     )
     argument_parser.add_argument(
-        "--impostor-tile-size", type=int, default=384,
-        help="Pixels per square canopy capture used by the interactive viewer (default: 384).",
+        "--impostor-tile-size", type=int, default=512,
+        help="Pixels per square canopy capture used by the interactive viewer (default: 512).",
     )
     argument_parser.add_argument(
         "--impostor-layers", type=int, default=4,
