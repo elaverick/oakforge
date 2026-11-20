@@ -7,7 +7,7 @@ colour billboard.
 
 ## Bake the canopy
 
-The interactive viewer defaults to 64 capture directions, 384 x 384 pixels per
+The interactive viewer defaults to 64 capture directions, 512 x 512 pixels per
 direction and four depth-peeling layers per pixel:
 
 ```bash
