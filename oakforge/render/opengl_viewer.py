@@ -433,6 +433,9 @@ class OpenGLViewer:
         active_triangles = self.wood_triangle_count + active_canopy_triangles
         active_name = "DEPTH IMPOSTOR" if self.canopy_mode == "impostor" else "POLYGON LEAVES"
         allocated = sum(self.gpu_allocations.values())
+        canopy_allocated = self.gpu_allocations.get(
+            "canopy_vbo", self.gpu_allocations.get("canopy_impostor", 0)
+        )
         total = telemetry["total_bytes"]
         used = telemetry["used_bytes"]
         process = telemetry["process_bytes"]
@@ -448,11 +451,13 @@ class OpenGLViewer:
             f"  Wood: {self.source_wood_triangles:,}   Leaf polygons: {self.model_leaf_triangles:,}",
             f"Active triangles: {active_triangles:,} (wood {self.wood_triangle_count:,} + canopy {active_canopy_triangles:,})",
             f"OakForge GPU allocations: {self._format_bytes(allocated)} (tracked buffers/textures)",
+            f"Canopy allocation: {self._format_bytes(canopy_allocated)}",
             f"Device VRAM: {self._format_bytes(used)} used / {self._format_bytes(total)} total",
             f"Process VRAM: {self._format_bytes(process)}   GPU load: {str(util) + '%' if util is not None else 'n/a'}",
             f"GPU memory controller: {str(memory_util) + '%' if memory_util is not None else 'n/a'}",
             f"Performance: {fps} FPS   CPU frame: {frame_ms}   GPU scene: {gpu_frame}",
             f"Telemetry: {telemetry['backend']}   Renderer: {telemetry['gpu_name']}",
+            f"Atlas view: {self.last_selected_view + 1 if self.last_selected_view >= 0 else 'n/a'} / {len(self.canopy_renderer.views) if self.canopy_renderer else 'n/a'}",
             "Keys: I representation | L canopy | 1-5 structure | W wireframe | V VSync | R regenerate",
         ]
         if self.status_message:
