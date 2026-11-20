@@ -16,6 +16,7 @@ The current English-oak recipe generates one trunk, seven main buttress roots, t
 - **Oak foliage tool** — scatters individually oriented, lobed oak leaves in grouped whorls along terminal twigs and inner-canopy sprays, with configurable radial spread and colour variation.
 - **Wood-surface tool** — fuses the trunk, roots and coarse limbs into one continuous implicit surface.
 - **Packed mesh builder** — creates capped branch tubes and lobed leaf polygons in compact float buffers. Fine branches use higher radial resolution, and leaf polygons are assembled in bounded batches to avoid a large temporary allocation.
+- **Canopy depth-impostor baker** — captures leaves into multi-view colour, normal and depth atlases, with optional terminal twig/spray capture. Structural wood remains a separate polygon mesh for conventional LOD.
 - **YAML recipe engine** — calls named tools and controls their execution order.
 - **OpenGL viewer** — shaded polygons, orbit camera, zoom, hierarchy inspection, wireframe and seed regeneration.
 - **OBJ exporter** — writes the generated geometry for inspection in Blender or another 3D package.
@@ -69,6 +70,16 @@ Viewer controls:
 | `R` | Regenerate using the next random seed |
 | `F` | Reset the camera |
 | `Escape` | Close the viewer |
+
+## Bake a canopy depth impostor
+
+Bake the leaves separately from the polygon-based trunk and branches:
+
+```bash
+python -m oakforge.render.impostor --config configs/english_oak.yaml --output build/english_oak_canopy
+```
+
+The default captures leaves only. Add `--include-twigs` to capture the terminal twig and spray tubes too; compare the result at the target game resolution before keeping them. See [the canopy impostor notes](docs/DEPTH_IMPOSTORS.md) for atlas layout and runtime integration guidance.
 
 ## Generate without a graphics window
 
