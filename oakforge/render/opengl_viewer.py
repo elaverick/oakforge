@@ -349,6 +349,10 @@ class OpenGLViewer:
         self._release_canopy_representation()
         self.canopy_mode = mode
         if not self.show_leaves or self.max_depth < 4:
+            self.mode_sample_frames = 0
+            self.mode_sample_seconds = 0.0
+            self.mode_gpu_samples = []
+            self.mode_sample_start = time.perf_counter()
             return
         if mode == "polygons":
             self._upload_canopy_polygons()
@@ -701,6 +705,7 @@ class OpenGLViewer:
             self._set_canopy_mode(previous_mode)
             self.status_message = f"Regenerated seed {self.tree.metadata.get('seed', '?')}"
         elif key == glfw.KEY_B:
+            self._finish_mode_sample()
             self.representation_metrics["polygons"].update(
                 {"fps": None, "frame_ms": None, "gpu_ms": None}
             )
