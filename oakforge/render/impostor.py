@@ -19,7 +19,7 @@ from typing import Iterable
 
 import numpy as np
 
-from oakforge.core.mesh import build_tree_mesh
+from oakforge.core.mesh import build_foliage_mesh
 from oakforge.generation import generate_from_file
 
 
@@ -32,6 +32,7 @@ class ImpostorSettings:
     atlas_columns: int = 8
     padding: int = 2
     elevation_bias: float = 0.0
+    include_twigs: bool = False
 
     def validate(self) -> None:
         if self.views < 8:
@@ -174,10 +175,11 @@ def _orthographic_view_projection(direction: np.ndarray, centre: np.ndarray,
 
 def bake_depth_impostor(tree, output_directory: str | Path,
                         settings: ImpostorSettings = ImpostorSettings()) -> dict:
-    """Render the complete tree into colour, normal and depth view atlases.
+    """Render the canopy into colour, normal and depth view atlases.
 
-    Requires a desktop OpenGL 3.3 implementation. This is an offline operation;
-    the generated game asset has no dependency on Python or OpenGL.
+    Leaves are always captured. Terminal twig and spray geometry is optional;
+    the trunk, roots and structural branches are excluded so they can use
+    conventional polygon LOD independently. Requires desktop OpenGL 3.3.
     """
     settings.validate()
     try:
@@ -186,7 +188,7 @@ def bake_depth_impostor(tree, output_directory: str | Path,
     except ImportError as error:
         raise RuntimeError("Install glfw and PyOpenGL to bake impostors") from error
 
-    mesh = build_tree_mesh(tree)
+    mesh = build_foliage_mesh(tree, include_twigs=settings.include_twigs)
     positions = np.asarray(mesh.positions, dtype=np.float32).reshape(-1, 3)
     normals = np.asarray(mesh.normals, dtype=np.float32).reshape(-1, 3)
     colours = np.asarray(mesh.colours, dtype=np.float32).reshape(-1, 3)
@@ -313,8 +315,16 @@ def bake_depth_impostor(tree, output_directory: str | Path,
                 "Impostor bake rendered no covered pixels; check the view-projection matrix and GL draw state"
             )
         manifest = {
-            "format": "oakforge-depth-impostor-v1",
+            "format": "oakforge-canopy-depth-impostor-v1",
             "tree_name": tree.name,
+            "source_geometry": {
+                "scope": "canopy",
+                "leaf_count": len(tree.leaves),
+                "available_terminal_twig_branches": sum(
+                    1 for branch in tree.branches if branch.role in {"twig", "spray"}
+                ),
+                "terminal_twig_branches_included": settings.include_twigs,
+            },
             "settings": asdict(settings),
             "atlas": {"width": width, "height": height, "columns": settings.atlas_columns,
                       "rows": math.ceil(settings.views / settings.atlas_columns),
@@ -345,11 +355,18 @@ def main() -> int:
     parser.add_argument("--views", type=int, default=64)
     parser.add_argument("--tile-size", type=int, default=128)
     parser.add_argument("--columns", type=int, default=8)
+    parser.add_argument(
+        "--include-twigs", action="store_true",
+        help="Include terminal twig and spray tubes in the canopy impostor bake",
+    )
     args = parser.parse_args()
     tree = generate_from_file(args.config)
     manifest = bake_depth_impostor(
         tree, args.output,
-        ImpostorSettings(views=args.views, tile_size=args.tile_size, atlas_columns=args.columns),
+        ImpostorSettings(
+            views=args.views, tile_size=args.tile_size,
+            atlas_columns=args.columns, include_twigs=args.include_twigs,
+        ),
     )
     print(f"Baked {len(manifest['views'])} views to {Path(args.output).resolve()}")
     print(f"Runtime representation: {manifest['runtime_geometry']['triangles']} triangles")
