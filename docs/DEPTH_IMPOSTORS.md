@@ -80,7 +80,7 @@ benchmark averages.
 Quality controls:
 
 - `--impostor-views`: capture directions (default 64)
-- `--impostor-tile-size`: pixels per capture direction (default 384)
+- `--impostor-tile-size`: pixels per capture direction (default 512)
 - `--impostor-layers`: depth layers per capture pixel (default 4)
 
 The cache key includes recipe, seed, view count, tile size and layer count.
