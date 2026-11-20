@@ -124,10 +124,10 @@ class OpenGLViewer:
         }
         self.mode_sample_frames = 0
         self.mode_sample_seconds = 0.0
-        self.mode_gpu_samples: list[float] = []
+        self.mode_gpu_samples: list[tuple[int, float]] = []
         self.mode_sample_start = time.perf_counter()
         self.mode_sample_generation = 0
-        self.benchmark_baseline: dict[str, dict[str, float | int | None]] = {}
+        self.mode_gpu_samples: list[tuple[int, float]] = []
         self.canopy_mode = "polygons"
         self.canopy_renderer: DepthImpostorRenderer | None = None
         self.show_leaves = True
@@ -387,8 +387,10 @@ class OpenGLViewer:
         metrics = self.representation_metrics[self.canopy_mode]
         metrics["fps"] = self.mode_sample_frames / self.mode_sample_seconds
         metrics["frame_ms"] = self.mode_sample_seconds * 1000.0 / self.mode_sample_frames
-        if self.mode_gpu_samples:
-            metrics["gpu_ms"] = sum(self.mode_gpu_samples) / len(self.mode_gpu_samples)
+        gpu_values = [sample for generation, sample in self.mode_gpu_samples
+                      if generation == self.mode_sample_generation]
+        if gpu_values:
+            metrics["gpu_ms"] = sum(gpu_values) / len(gpu_values)
         resource_name = "canopy_vbo" if self.canopy_mode == "polygons" else "canopy_impostor"
         metrics["gpu_bytes"] = self.gpu_allocations.get(resource_name, 0)
 
@@ -445,10 +447,11 @@ class OpenGLViewer:
                     self.gpu_scene_ms = float(nanoseconds) / 1_000_000.0
                     # Query results are asynchronous. A query submitted before
                     # the last switch belongs to the previous representation.
-                    if self.gpu_query_generation[index] == self.mode_sample_generation:
-                        self.mode_gpu_samples.append(self.gpu_scene_ms)
-                        if len(self.mode_gpu_samples) > 120:
-                            self.mode_gpu_samples.pop(0)
+                    self.mode_gpu_samples.append((
+                        self.gpu_query_generation[index], self.gpu_scene_ms
+                    ))
+                    if len(self.mode_gpu_samples) > 240:
+                        self.mode_gpu_samples.pop(0)
                     self.gpu_query_pending[index] = False
             except Exception:
                 self.gpu_queries = []
