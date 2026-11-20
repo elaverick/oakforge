@@ -14,7 +14,7 @@ direction and four depth-peeling layers per pixel:
 python -m oakforge.render.impostor \
   --config configs/english_oak.yaml \
   --output build/english_oak_canopy \
-  --views 64 --tile-size 384 --layers 4 --columns 8
+  --views 64 --tile-size 512 --layers 4 --columns 8
 ```
 
 The tile size can be any value of at least 32; power-of-two dimensions are not
