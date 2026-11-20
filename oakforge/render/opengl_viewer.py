@@ -528,6 +528,7 @@ class OpenGLViewer:
         lines = [
             "OAKFORGE | CANOPY REPRESENTATION BENCHMARK",
             f"Mode: {active_name}   [I] switch   [L] canopy on/off",
+            f"Representation samples: polygon {polygon['fps'] is not None and 'measured' or 'not measured'} | impostor {impostor['fps'] is not None and 'measured' or 'not measured'}",
             f"Source model: {self.model_total_triangles:,} triangles (wood {self.source_wood_triangles:,} + leaves {self.model_leaf_triangles:,})",
             f"Active triangles: {active_triangles:,} (wood {self.wood_triangle_count:,} + canopy {active_canopy_triangles:,})",
             f"OakForge GPU allocations: {self._format_bytes(allocated)} (tracked buffers/textures)",
