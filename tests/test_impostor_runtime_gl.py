@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from oakforge.render.impostor_runtime import DepthImpostorRenderer
+from oakforge.render.impostor_runtime import IMPOSTOR_STYLES, DepthImpostorRenderer
 
 
 def _perspective_view_projection(eye, target, aspect=1.0):
@@ -126,6 +126,38 @@ class RuntimeImpostorOpenGLTests(unittest.TestCase):
             self.assertGreater(covered_pixels, 10)
             self.assertTrue(np.all(depth_pixels[covered] < 1.0))
             self.assertEqual(self.gl.glGetError(), self.gl.GL_NO_ERROR)
+
+            # Render each footprint style from the same capture and camera.
+            # Save these as CI artefacts so their silhouette differences can be
+            # inspected without relying only on numeric assertions.
+            pixels_by_style = {}
+            for style in IMPOSTOR_STYLES:
+                renderer.set_style(style)
+                self.gl.glClear(self.gl.GL_COLOR_BUFFER_BIT | self.gl.GL_DEPTH_BUFFER_BIT)
+                style_views = renderer.draw(matrix, camera_position, (128, 128))
+                self.assertEqual(style_views, [0])
+                self.gl.glFinish()
+                style_pixels = np.frombuffer(
+                    self.gl.glReadPixels(
+                        0, 0, 128, 128, self.gl.GL_RGBA, self.gl.GL_UNSIGNED_BYTE
+                    ),
+                    dtype=np.uint8,
+                ).reshape(128, 128, 4)
+                pixels_by_style[style] = style_pixels
+                Image.fromarray(style_pixels, mode="RGBA").save(
+                    Path(f"build/impostor-style-{style}.png")
+                )
+                self.assertGreater(
+                    int(np.count_nonzero(np.any(style_pixels[:, :, :3] > 4, axis=2))),
+                    10,
+                )
+            self.assertGreater(
+                int(np.count_nonzero(np.any(
+                    pixels_by_style["square"] != pixels_by_style["foliage"], axis=2
+                ))),
+                0,
+            )
+            renderer.set_style("foliage")
 
             # A displaced camera changes the forward projection while retaining
             # one coherent source capture (no cross-view geometry averaging).
