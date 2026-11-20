@@ -1,138 +1,143 @@
-# Canopy depth impostors and interactive LOD comparison
+# Layered canopy depth impostors and LOD comparison
 
-OakForge bakes the **canopy only** into a multi-view depth-impostor asset. This
-is a hybrid representation: leaves are captured in the impostor, while the
-trunk, roots and structural branches remain polygon geometry and can use the
-game's normal mesh LOD system.
+OakForge keeps the trunk, roots and structural branches as genuine polygon
+geometry. Only the leaf canopy is replaced by the impostor. The runtime
+representation is a view-dependent, layered depth surface rather than a flat
+colour billboard.
 
 ## Bake the canopy
 
-Bake leaves only:
+The interactive viewer defaults to 64 capture directions, 384 x 384 pixels per
+direction and four depth-peeling layers per pixel:
 
 ```bash
 python -m oakforge.render.impostor \
   --config configs/english_oak.yaml \
   --output build/english_oak_canopy \
-  --views 64 --tile-size 256 --columns 8
+  --views 64 --tile-size 384 --layers 4 --columns 8
 ```
 
-Optionally include terminal twig and spray tubes:
+The tile size can be any value of at least 32; power-of-two dimensions are not
+required by the OpenGL texture-array implementation. Increase it to 512 for
+close-up assets, or reduce the view count/layer count for a smaller runtime
+asset. The maximum supported layer count is four.
+
+The default bake captures leaves only. Add `--include-twigs` to capture
+terminal twig and spray tubes as well. Trunk, roots and structural branches
+remain excluded from the canopy asset and continue to use polygon LOD.
+
+## What is captured
+
+For each view, the baker renders the canopy repeatedly using depth peeling:
+
+1. The first pass records the nearest visible leaf surface.
+2. Each later pass rejects fragments at or in front of the previous pass's
+   depth, then records the next visible surface at that pixel.
+3. Colour, world-space normal and 16-bit linear orthographic depth are written
+   for every layer.
+
+The resulting asset contains one colour, normal and depth atlas per peel layer,
+plus a manifest with the canopy bounds, view directions and projection range.
+Depth atlases are 16-bit greyscale images, not 8-bit colour-encoded depth.
+
+## Runtime reconstruction
+
+The viewer draws only a screen-space rectangle around the projected canopy
+bounds. For each covered screen pixel, the fragment shader:
+
+- Builds a ray from the active camera through that pixel.
+- Intersects the ray with each capture view's centre plane to establish initial
+  texture coordinates.
+- Uses iterative inverse projection to find the source texel whose reconstructed
+  3D point projects back to that exact screen pixel.
+- Evaluates every available depth layer and keeps the closest valid surface
+  along the current camera ray.
+- Blends the three surrounding capture views using spherical convex-hull
+  barycentric weights. The blend is continuous across the capture-triangle
+  boundaries; it does not snap from one billboard to another.
+- Reconstructs the final world position and writes it to the scene depth buffer,
+  so the canopy depth-tests correctly against the polygon trunk and branches.
+
+This is a layered depth impostor: it retains several visible surfaces along a
+capture ray and uses those surfaces to produce camera-dependent parallax. It
+does not preserve every leaf as independently addressable geometry, and it is
+not a full volumetric or wind-deformable canopy.
+
+## Interactive comparison
+
+Run the viewer:
 
 ```bash
-python -m oakforge.render.impostor \
-  --config configs/english_oak.yaml \
-  --output build/english_oak_canopy_twigs \
-  --views 64 --tile-size 256 --columns 8 --include-twigs
+python main.py
 ```
 
-The default is deliberately **leaves only**. Use the optional twig capture to
-compare whether those fine woody details survive at the intended on-screen
-size and atlas resolution. It includes only branch roles `twig` and `spray`;
-trunk, roots, primary, leader, secondary and tertiary branches are excluded.
+Press **I** to switch between genuine polygon leaves and the layered depth
+impostor. The trunk, roots and structural branches stay as polygons in both
+modes. Other controls are **L** canopy visibility, **1-5** structural branch
+levels, **W** wireframe, **V** VSync, **R** regenerate/re-bake and **B** reset
+benchmark averages.
 
-## Interactive representation comparison
+Quality controls:
 
-Run the viewer normally:
+- `--impostor-views`: capture directions (default 64)
+- `--impostor-tile-size`: pixels per capture direction (default 384)
+- `--impostor-layers`: depth layers per capture pixel (default 4)
 
-```bash
-python main.py --config configs/english_oak.yaml
-```
+The cache key includes recipe, seed, view count, tile size and layer count.
+Assets from the earlier single-depth v2 format are not reused; the viewer
+automatically creates a new layered v3 asset.
 
-On first launch for a recipe/seed/quality combination, OakForge automatically
-bakes and caches the canopy atlas under `build/canopy_impostors/`. It reuses
-the cache when the recipe hash, seed, leaf count, view count and tile size
-match. The viewer starts in genuine polygon-leaf mode.
+## Diagnostics panel
 
-Press **I** to switch between:
-
-- **Polygon leaves:** the original individual oak-leaf triangles rendered as
-  genuine mesh geometry.
-- **Depth impostor:** a camera-selected atlas view rendered on a two-triangle
-  quad, with per-pixel depth reconstructed from the packed RGB24 depth texture
-  and written back to the scene depth buffer.
-
-The trunk, roots and branch mesh stays as polygon geometry in both modes. This
-keeps the comparison focused on canopy representation. **L** hides/shows the
-canopy; **1-5** switch structural branch levels; **W** toggles polygon
-wireframe; **V** toggles VSync; **R** regenerates the tree and bakes the new
-seed's impostor.
-
-The runtime currently selects the single capture direction with the greatest
-dot product against the camera direction. The atlas uses 64 full-sphere
-Fibonacci directions by default. View blending and wind animation remain
-possible follow-on improvements; nearest-view selection can show transitions
-as the camera moves between capture directions.
-
-## Diagnostics panel and metric definitions
-
-The live panel reports:
+The panel reports:
 
 - **Model triangles:** the full source polygon model's wood and leaf triangle
-  counts. This does not change when switching representations.
-- **Active triangles:** the wood triangles plus the active canopy representation
-  (all leaf triangles in polygon mode, two quad triangles in impostor mode).
-- **OakForge GPU allocations:** bytes requested for the viewer's tracked vertex
-  buffers and textures. This is an exact sum of those resource sizes, not a
-  driver-reported process total; it excludes driver overhead and small GL
-  objects such as shader programs.
-- **Device VRAM:** device-wide used/total memory from NVIDIA NVML when
-  available. The figure includes the desktop and other processes.
-- **Process VRAM:** graphics-process memory attributed to OakForge by NVML,
-  when the driver exposes it.
-- **GPU load and memory-controller load:** NVIDIA NVML utilisation samples.
-- **FPS and frame time:** the viewer's measured frame interval. VSync is off by
-  default to avoid capping both modes at the display refresh rate.
-- **GPU scene time:** asynchronous OpenGL timer-query time for drawing the wood
-  and canopy, excluding the grid and diagnostics overlay.
+  counts, independent of the active canopy representation.
+- **Active triangles:** wood triangles plus either all polygon canopy triangles
+  or the two triangles used to rasterise the screen-space impostor region.
+- **Tracked viewer allocations:** bytes uploaded for known vertex buffers and
+  the three layered texture arrays. This is an exact sum of those requested
+  resource sizes, not a driver-reported process total.
+- **Device VRAM and process VRAM:** NVIDIA NVML telemetry where available.
+- **GPU utilisation and memory-controller load:** NVIDIA telemetry where
+  supported.
+- **FPS and CPU frame time:** measured frame interval, with VSync off by default.
+- **GPU scene time:** asynchronous OpenGL timer-query time for the wood and
+  canopy draw, excluding the grid and diagnostics overlay.
 
-The NVIDIA telemetry is supplied by `nvidia-ml-py` (installed from
-`requirements.txt`). If NVML is unavailable, the viewer attempts to read
-device-wide total/free VRAM from `GL_NVX_gpu_memory_info`. Unsupported
-utilisation and process-memory values are shown as `n/a`, not guessed.
+The atlas arrays use 16-bit depth, RGBA8 colour and RGBA8 normals. With the
+default 64 views, 384px tiles and four layers, the three texture arrays require
+approximately 360 MiB of GPU storage before small GL overheads. Reduce tile
+size, view count or layer count when targeting a smaller memory budget.
 
-The viewer retains a per-representation benchmark after switching away from a
-mode. FPS and CPU frame interval are averaged over the time spent in that mode;
-GPU scene time uses asynchronous OpenGL timer queries tagged with the active
-representation so late query results are not attributed to the wrong mode.
-Press `B` to reset the averages. Tracked canopy allocations are retained for
-both variants (polygon vertex buffer versus impostor atlas textures and quad
-buffer), even though the inactive variant is released. Resource upload time is
-excluded from the next measurement window. Device/process VRAM remains a
-driver-wide/process-wide sample and can move due to unrelated GPU activity; use
-the tracked allocation comparison to isolate viewer resources.
+## Validation
 
-## Runtime asset contents
+The test suite checks depth encoding, spherical view interpolation and runtime
+shader compilation. The Xvfb-backed smoke test also inspects the baked atlases
+to verify that secondary depth layers contain geometry, then renders from the
+capture direction and a displaced camera position to exercise parallax
+reprojection.
 
-- `colour.png`: leaf (and optionally twig) colour and alpha coverage.
-- `normal.png`: captured surface normals.
-- `depth.png`: orthographic depth packed into RGB24 (big-endian).
-- `manifest.json`: canopy bounds, capture directions, atlas rectangles,
-  depth near/far planes, source component counts and bake settings.
+Run the tests and smoke bake with:
 
-The manifest bounds describe the canopy source geometry, **not the whole tree**.
-The runtime places the canopy representation relative to the separately
-rendered wood mesh.
+```bash
+python -m unittest discover -s tests -v
+xvfb-run -a python -m oakforge.render.impostor --config configs/english_oak.yaml \
+  --output build/impostor --views 16 --tile-size 192 --layers 4
+xvfb-run -a env OAKFORGE_GL_SMOKE=1 python -m unittest discover -s tests \
+  -p test_impostor_runtime_gl.py -v
+```
 
-## Hybrid runtime arrangement
+## Current limitations
 
-1. Build the polygon wood asset with `build_wood_mesh(tree)`. This excludes
-   leaf polygons but retains all branch tiers for conventional LOD.
-2. Render the leaf impostor as a separate canopy representation, aligned using
-   the canopy bounds in `manifest.json`.
-3. When using `--include-twigs`, call
-   `build_wood_mesh(tree, include_terminal_twigs=False)` so terminal twigs and
-   sprays are not drawn twice. The `build_tree_mesh` function remains the
-   complete legacy path for the existing viewer and OBJ export.
-
-## Limitations
-
-- The current runtime selects one nearest atlas view; view blending has not yet
-  been implemented.
-- Captures are static. Wind animation needs multiple baked states or a separate
-  animated near-field representation.
-- Twig inclusion is experimental. At low atlas resolutions, twigs may collapse
-  to sub-pixel lines; compare the leaves-only and twig-enabled atlases at the
-  intended game camera distance before adopting them.
-- The current atlas and depth shader are intended as a comparison/validation
-  renderer. Validate angular transitions, depth edges and silhouette stability
-  at game camera distances before integrating into a production renderer.
+- Four depth-peeling layers provide a finite number of visible surfaces. Dense
+  foliage can still contain more layers than the asset stores.
+- Capture blending and parallax depend on the baked view density and source
+  resolution. Extreme close-ups or camera positions substantially outside the
+  capture coverage can reveal reconstruction gaps.
+- The capture is static. Wind animation requires multiple baked states or a
+  separate animated near-field representation.
+- Fine twigs remain optional because their appearance is highly dependent on
+  target screen size and atlas resolution.
+- Validate the baked result at the actual game camera distances before using
+  the asset as a production vegetation LOD.
