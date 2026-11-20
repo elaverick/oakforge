@@ -364,6 +364,7 @@ class OpenGLViewer:
         self.mode_sample_frames = 0
         self.mode_sample_seconds = 0.0
         self.mode_gpu_samples = []
+        self.mode_sample_generation += 1
         self.status_message = f"Canopy representation: {mode.upper()}"
 
     def _upload_grid_mesh(self) -> None:
