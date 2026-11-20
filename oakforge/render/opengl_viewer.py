@@ -350,10 +350,12 @@ class OpenGLViewer:
             self._finish_mode_sample()
         else:
             # A re-upload caused by changing hierarchy depth or visibility is
-            # not a representation switch. Close the current sampling window.
+            # not a representation switch. Restart the performance window but
+            # keep the last completed reading for the selected representation.
             self.mode_sample_frames = 0
             self.mode_sample_seconds = 0.0
             self.mode_gpu_samples = []
+            self.mode_sample_generation += 1
         self._release_canopy_representation()
         self.canopy_mode = mode
         if not self.show_leaves or self.max_depth < 4:
