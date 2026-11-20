@@ -52,21 +52,26 @@ class RuntimeImpostorMathTests(unittest.TestCase):
 
     def test_live_foliage_controls_are_clamped(self):
         renderer = object.__new__(DepthImpostorRenderer)
-        renderer.noise_intensity = 0.6
-        renderer.noise_scale = 8.0
-        renderer.angularity = 0.65
+        renderer.noise_intensity = 1.35
+        renderer.noise_scale = 28.0
+        renderer.angularity = 0.8
+        renderer.splat_scale = 2.6
 
-        self.assertAlmostEqual(renderer.adjust_noise_intensity(0.2), 0.8)
-        self.assertEqual(renderer.adjust_noise_intensity(5.0), 1.0)
+        self.assertAlmostEqual(renderer.adjust_noise_intensity(0.25), 1.6)
+        self.assertEqual(renderer.adjust_noise_intensity(5.0), 2.5)
         self.assertEqual(renderer.adjust_noise_intensity(-5.0), 0.0)
 
-        self.assertAlmostEqual(renderer.adjust_noise_scale(-0.5), 7.5)
-        self.assertEqual(renderer.adjust_noise_scale(-20.0), 0.5)
-        self.assertEqual(renderer.adjust_noise_scale(100.0), 32.0)
+        self.assertAlmostEqual(renderer.adjust_noise_scale(-3.0), 25.0)
+        self.assertEqual(renderer.adjust_noise_scale(-100.0), 1.0)
+        self.assertEqual(renderer.adjust_noise_scale(200.0), 80.0)
 
-        self.assertAlmostEqual(renderer.adjust_angularity(0.1), 0.75)
+        self.assertAlmostEqual(renderer.adjust_angularity(0.2), 1.0)
         self.assertEqual(renderer.adjust_angularity(-5.0), 0.0)
         self.assertEqual(renderer.adjust_angularity(5.0), 1.0)
+
+        self.assertAlmostEqual(renderer.adjust_splat_scale(0.4), 3.0)
+        self.assertEqual(renderer.adjust_splat_scale(-5.0), 0.8)
+        self.assertEqual(renderer.adjust_splat_scale(20.0), 6.0)
 
 
 
