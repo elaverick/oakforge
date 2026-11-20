@@ -106,8 +106,8 @@ The panel reports:
   canopy draw, excluding the grid and diagnostics overlay.
 
 The atlas arrays use 16-bit depth, RGBA8 colour and RGBA8 normals. With the
-default 64 views, 384px tiles and four layers, the three texture arrays require
-approximately 360 MiB of GPU storage before small GL overheads. Reduce tile
+default 64 views, 512px tiles and four layers, the three texture arrays require
+approximately 640 MiB of GPU storage before small GL overheads. Reduce tile
 size, view count or layer count when targeting a smaller memory budget.
 
 ## Validation
