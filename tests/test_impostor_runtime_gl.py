@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
+from oakforge.render.impostor import _orthographic_view_projection
 from oakforge.render.impostor_runtime import DepthImpostorRenderer
 
 
@@ -43,12 +44,26 @@ class RuntimeImpostorOpenGLTests(unittest.TestCase):
         try:
             self.gl.glViewport(0, 0, 64, 64)
             self.gl.glEnable(self.gl.GL_DEPTH_TEST)
+            self.gl.glClearColor(0.0, 0.0, 0.0, 1.0)
             self.gl.glClear(self.gl.GL_COLOR_BUFFER_BIT | self.gl.GL_DEPTH_BUFFER_BIT)
-            view_index = renderer.draw(
-                np.identity(4, dtype=np.float32),
-                np.array([0.35, 0.8, 0.2], dtype=np.float32),
+            view = renderer.views[0]
+            direction = np.asarray(view["direction"], dtype=np.float32)
+            matrix = _orthographic_view_projection(
+                direction,
+                renderer.centre,
+                renderer.extent,
+                renderer.near,
+                renderer.far,
             )
-            self.assertGreaterEqual(view_index, 0)
+            view_index = renderer.draw(matrix, direction)
+            self.gl.glFinish()
+            pixels = np.frombuffer(
+                self.gl.glReadPixels(0, 0, 64, 64, self.gl.GL_RGBA, self.gl.GL_UNSIGNED_BYTE),
+                dtype=np.uint8,
+            ).reshape(64, 64, 4)
+            covered_pixels = int(np.count_nonzero(np.any(pixels[:, :, :3] > 4, axis=2)))
+            self.assertEqual(view_index, 0)
+            self.assertGreater(covered_pixels, 10)
             self.assertEqual(self.gl.glGetError(), self.gl.GL_NO_ERROR)
             self.assertGreater(renderer.allocated_bytes, 0)
         finally:
