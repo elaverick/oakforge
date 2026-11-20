@@ -83,6 +83,12 @@ class GpuTelemetry:
             self.values["backend"] = "NVML"
             self.values["gpu_name"] = selected[0]
         except Exception:
+            if self._nvml_initialised and self._pynvml is not None:
+                try:
+                    self._pynvml.nvmlShutdown()
+                except Exception:
+                    pass
+            self._nvml_initialised = False
             self._pynvml = None
             self._device = None
 
