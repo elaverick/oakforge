@@ -51,7 +51,9 @@ void main() {
     vec4 colour_sample = texture(colour_atlas, atlas_uv);
     if (colour_sample.a < 0.5) discard;
 
-    vec3 packed_depth = texture(depth_atlas, atlas_uv).rgb;
+    // RGB8 texture samples are normalised to [0,1]; restore byte values
+    // before decoding the baker's big-endian 24-bit integer.
+    vec3 packed_depth = floor(texture(depth_atlas, atlas_uv).rgb * 255.0 + 0.5);
     float depth_value = dot(packed_depth, vec3(65536.0, 256.0, 1.0)) / 16777215.0;
     float depth_offset = depth_far * 0.5
         - (depth_near + depth_value * (depth_far - depth_near));
