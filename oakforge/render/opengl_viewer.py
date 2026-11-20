@@ -128,7 +128,7 @@ class OpenGLViewer:
         self.overlay_vbo = 0
         self.overlay_texture = 0
         self.overlay_width = 760
-        self.overlay_height = 286
+        self.overlay_height = 320
         self.overlay_last_update = 0.0
 
         self.gpu_allocations: dict[str, int] = {}
