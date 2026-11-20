@@ -59,6 +59,7 @@ class GpuTelemetry:
             import pynvml
             pynvml.nvmlInit()
             self._nvml_initialised = True
+            self._pynvml = pynvml
             device_count = pynvml.nvmlDeviceGetCount()
             candidates = []
             for index in range(device_count):
