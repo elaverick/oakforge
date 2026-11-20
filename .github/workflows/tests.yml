@@ -27,12 +27,12 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Bake English oak depth impostor
-        run: xvfb-run -a python -m oakforge.render.impostor --config configs/english_oak.yaml --output build/impostor
+        run: xvfb-run -a python -m oakforge.render.impostor --config configs/english_oak.yaml --output build/impostor --views 16 --tile-size 192 --layers 4
       - name: Smoke-test runtime depth-impostor shader
         run: xvfb-run -a env OAKFORGE_GL_SMOKE=1 python -m unittest discover -s tests -p test_impostor_runtime_gl.py -v
       - name: Bake matched high-resolution canopy comparison
         run: |
-          xvfb-run -a python -m oakforge.render.impostor --config configs/english_oak.yaml --output build/comparison/leaves-only --views 8 --tile-size 512 --columns 8
+          xvfb-run -a python -m oakforge.render.impostor --config configs/english_oak.yaml --output build/comparison/leaves-only --views 8 --tile-size 512 --layers 3 --columns 8
           xvfb-run -a python -m oakforge.render.impostor --config configs/english_oak.yaml --output build/comparison/with-twigs --views 8 --tile-size 512 --columns 8 --include-twigs
       - name: Upload baked impostor assets and twig comparison
         uses: actions/upload-artifact@v4
