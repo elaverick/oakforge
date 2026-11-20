@@ -315,7 +315,7 @@ def bake_depth_impostor(tree, output_directory: str | Path,
                 "Impostor bake rendered no covered pixels; check the view-projection matrix and GL draw state"
             )
         manifest = {
-            "format": "oakforge-canopy-depth-impostor-v1",
+            "format": "oakforge-canopy-depth-impostor-v2",
             "tree_name": tree.name,
             "tree_seed": tree.metadata.get("seed"),
             "source_geometry": {
