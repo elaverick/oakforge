@@ -378,9 +378,11 @@ class OpenGLViewer:
             else:
                 self.gpu_queries = [int(query) for query in generated]
             self.gpu_query_pending = [False] * len(self.gpu_queries)
+            self.gpu_query_generation = [0] * len(self.gpu_queries)
         except Exception:
             self.gpu_queries = []
             self.gpu_query_pending = []
+            self.gpu_query_generation = []
 
     def _poll_gpu_queries(self) -> None:
         gl = self.gl
@@ -392,10 +394,16 @@ class OpenGLViewer:
                 if available:
                     nanoseconds = gl.glGetQueryObjectui64v(query, gl.GL_QUERY_RESULT)
                     self.gpu_scene_ms = float(nanoseconds) / 1_000_000.0
+                    self.mode_gpu_samples.append((
+                        self.gpu_query_generation[index], self.gpu_scene_ms
+                    ))
+                    if len(self.mode_gpu_samples) > 240:
+                        self.mode_gpu_samples.pop(0)
                     self.gpu_query_pending[index] = False
             except Exception:
                 self.gpu_queries = []
                 self.gpu_query_pending = []
+                self.gpu_query_generation = []
                 self.gpu_scene_ms = None
                 return
 
@@ -407,6 +415,7 @@ class OpenGLViewer:
             return
         try:
             self.gl.glBeginQuery(self.gl.GL_TIME_ELAPSED, self.gpu_queries[index])
+            self.gpu_query_generation[index] = self.mode_sample_generation
             self.gpu_query_active = index
         except Exception:
             self.gpu_queries = []
