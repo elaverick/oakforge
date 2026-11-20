@@ -174,8 +174,19 @@ SurfaceSample sample_capture_view(
             float dv = (uv.y + texel_size < 0.999) ? texel_size : -texel_size;
             vec2 uv_x = uv + vec2(du, 0.0);
             vec2 uv_y = uv + vec2(0.0, dv);
-            vec3 point_x = reconstruct_point(uv_x, slice_index, right, up, forward);
-            vec3 point_y = reconstruct_point(uv_y, slice_index, right, up, forward);
+            // At a silhouette edge one of the finite-difference taps may land
+            // outside the peeled surface. Use the local capture-plane tangent
+            // there instead of differentiating against the clear-depth value.
+            vec3 point_x = texture(
+                colour_atlas, vec3(uv_x, slice_index)
+            ).a >= 0.5
+                ? reconstruct_point(uv_x, slice_index, right, up, forward)
+                : point + right * (du * canopy_extent);
+            vec3 point_y = texture(
+                colour_atlas, vec3(uv_y, slice_index)
+            ).a >= 0.5
+                ? reconstruct_point(uv_y, slice_index, right, up, forward)
+                : point + up * (dv * canopy_extent);
             float clip_x_w;
             float clip_y_w;
             vec2 mapped_x = project_point(point_x, clip_x_w);
@@ -401,6 +412,12 @@ class DepthImpostorRenderer:
         self.atlas_padding = int(atlas["padding"])
         self.tile_pitch = int(atlas["tile_pitch"])
         self.layer_count = int(self.manifest["depth_layers"]["count"])
+        max_array_layers = int(gl.glGetIntegerv(gl.GL_MAX_ARRAY_TEXTURE_LAYERS))
+        if len(self.views) * self.layer_count > max_array_layers:
+            raise RuntimeError(
+                f"Layered canopy needs {len(self.views) * self.layer_count} texture-array "
+                f"slices, but this GPU supports {max_array_layers}"
+            )
         if not 1 <= self.layer_count <= MAX_DEPTH_LAYERS:
             raise ValueError("The runtime supports between one and four depth layers")
         texture_files = self.manifest["textures"]
