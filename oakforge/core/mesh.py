@@ -272,6 +272,35 @@ def _make_oak_leaves(leaves: list[Leaf], mesh: MeshData, batch_size: int = 16384
         _append_float_buffer(mesh.colours, triangle_colours)
 
 
+def build_wood_mesh(
+    tree: TreeModel,
+    radial_sides: int = 16,
+    include_terminal_twigs: bool = True,
+) -> MeshData:
+    """Build trunk, roots and branch geometry without leaf polygons.
+
+    Set `include_terminal_twigs=False` when twig/spray geometry is supplied by
+    the canopy impostor instead. The default retains every branch tier.
+    """
+    mesh = MeshData()
+    fused_surface = tree.metadata.get("wood_surface")
+    fused_branch_ids: set[str] = set()
+    if isinstance(fused_surface, dict) and isinstance(fused_surface.get("mesh"), MeshData):
+        unified_mesh = fused_surface["mesh"]
+        mesh.positions.extend(unified_mesh.positions)
+        mesh.normals.extend(unified_mesh.normals)
+        mesh.colours.extend(unified_mesh.colours)
+        fused_branch_ids = set(fused_surface.get("branch_ids", []))
+
+    for branch in tree.branches:
+        if branch.branch_id in fused_branch_ids:
+            continue
+        if not include_terminal_twigs and branch.role in {"twig", "spray"}:
+            continue
+        _make_branch_tube(branch, mesh, radial_sides)
+    return mesh
+
+
 def build_foliage_mesh(
     tree: TreeModel,
     include_twigs: bool = False,
@@ -282,7 +311,7 @@ def build_foliage_mesh(
     Leaves are always included. Terminal twig and spray tubes are optional so
     their contribution can be assessed at the target atlas resolution. Trunk,
     roots, scaffold limbs and all other branch tiers are deliberately excluded
-    and remain available through :func:`build_tree_mesh` for polygon LOD.
+    and remain available through :func:`build_wood_mesh` for polygon LOD.
     """
     mesh = MeshData()
     if include_twigs:
@@ -295,25 +324,8 @@ def build_foliage_mesh(
 
 
 def build_tree_mesh(tree: TreeModel, radial_sides: int = 16) -> MeshData:
-    """Assemble YAML-built fused wood, fine branch tubes and foliage into one mesh."""
-    mesh = MeshData()
-    fused_surface = tree.metadata.get("wood_surface")
-    fused_branch_ids: set[str] = set()
-    if isinstance(fused_surface, dict) and isinstance(fused_surface.get("mesh"), MeshData):
-        unified_mesh = fused_surface["mesh"]
-        mesh.positions.extend(unified_mesh.positions)
-        mesh.normals.extend(unified_mesh.normals)
-        mesh.colours.extend(unified_mesh.colours)
-        fused_branch_ids = set(fused_surface.get("branch_ids", []))
-
-    # Fine branches remain lightweight tubes; coarse limbs share one continuous surface.
-    for branch in tree.branches:
-        if branch.branch_id not in fused_branch_ids:
-            _make_branch_tube(branch, mesh, radial_sides)
-
-    # Build the large foliage buffer separately. Repeatedly growing a populated
-    # branch array while appending hundreds of thousands of leaves causes costly
-    # reallocations on some Python runtimes; one final array-to-array copy avoids it.
+    """Assemble the complete legacy tree mesh from wood and leaf geometry."""
+    mesh = build_wood_mesh(tree, radial_sides)
     if tree.leaves:
         leaf_mesh = MeshData()
         _make_oak_leaves(tree.leaves, leaf_mesh)
@@ -321,7 +333,6 @@ def build_tree_mesh(tree: TreeModel, radial_sides: int = 16) -> MeshData:
         mesh.normals.frombytes(memoryview(leaf_mesh.normals).cast("B"))
         mesh.colours.frombytes(memoryview(leaf_mesh.colours).cast("B"))
     return mesh
-
 
 def write_obj(mesh: MeshData, file_path: str) -> None:
     """Write the generated triangles to an OBJ file for external inspection."""
