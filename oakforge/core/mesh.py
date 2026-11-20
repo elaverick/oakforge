@@ -272,6 +272,28 @@ def _make_oak_leaves(leaves: list[Leaf], mesh: MeshData, batch_size: int = 16384
         _append_float_buffer(mesh.colours, triangle_colours)
 
 
+def build_foliage_mesh(
+    tree: TreeModel,
+    include_twigs: bool = False,
+    radial_sides: int = 16,
+) -> MeshData:
+    """Build only canopy geometry for depth-impostor baking.
+
+    Leaves are always included. Terminal twig and spray tubes are optional so
+    their contribution can be assessed at the target atlas resolution. Trunk,
+    roots, scaffold limbs and all other branch tiers are deliberately excluded
+    and remain available through :func:`build_tree_mesh` for polygon LOD.
+    """
+    mesh = MeshData()
+    if include_twigs:
+        for branch in tree.branches:
+            if branch.role in {"twig", "spray"}:
+                _make_branch_tube(branch, mesh, radial_sides)
+    if tree.leaves:
+        _make_oak_leaves(tree.leaves, mesh)
+    return mesh
+
+
 def build_tree_mesh(tree: TreeModel, radial_sides: int = 16) -> MeshData:
     """Assemble YAML-built fused wood, fine branch tubes and foliage into one mesh."""
     mesh = MeshData()
