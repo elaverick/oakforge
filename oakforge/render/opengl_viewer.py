@@ -158,6 +158,7 @@ class OpenGLViewer:
 
         if not glfw.init():
             raise RuntimeError("GLFW could not initialise. A desktop OpenGL session is required.")
+        glfw.window_hint(glfw.VISIBLE, glfw.TRUE)
         glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
         glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
         glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
