@@ -87,6 +87,35 @@ modes. Other controls are **L** canopy visibility, **1-5** structural branch
 levels, **W** wireframe, **V** VSync, **R** regenerate/re-bake and **B** reset
 benchmark averages.
 
+### Foliage footprint styles
+
+The point-splat renderer provides four runtime footprint styles, selectable with
+**C** while the depth impostor is active:
+
+- **Square** preserves the original point-splat appearance as the baseline.
+- **Round** clips each sample to a circular footprint.
+- **Angular** uses irregularly oriented polygons with a per-sample variation in
+  side count and edge shape.
+- **Foliage** adds two scales of object-space value noise to the angular
+  footprint. Noise changes the edge coverage, not the reconstructed position
+  or depth, so the layered depth test remains authoritative.
+
+The noise coordinates are derived from canopy-local positions and the source
+texel footprint, rather than screen coordinates. This keeps the breakup attached
+to the tree as the camera moves and avoids the characteristic screen-space
+crawling of animated noise. The base colour and depth atlas data are unchanged.
+
+Live controls (available while the depth impostor is active):
+
+- **C** cycles square, round, angular and foliage styles.
+- **[ / ]** decrease or increase edge-noise strength.
+- **, / .** decrease or increase the noise scale.
+- **- / =** decrease or increase angularity.
+
+The default is foliage style with moderate angularity and noise. The controls
+are clamped to safe ranges; switch back to square at any time for a direct
+comparison. Noise evaluation is only performed in foliage style.
+
 Quality controls:
 
 - `--impostor-views`: capture directions (default 64)
