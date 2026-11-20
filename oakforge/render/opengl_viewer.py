@@ -127,7 +127,6 @@ class OpenGLViewer:
         self.mode_gpu_samples: list[tuple[int, float]] = []
         self.mode_sample_start = time.perf_counter()
         self.mode_sample_generation = 0
-        self.mode_gpu_samples: list[tuple[int, float]] = []
         self.canopy_mode = "polygons"
         self.canopy_renderer: DepthImpostorRenderer | None = None
         self.show_leaves = True
