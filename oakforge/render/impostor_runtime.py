@@ -81,7 +81,7 @@ void main() {
         sample_local_position = vec3(0.0);
         sample_footprint_x = vec3(0.0);
         sample_footprint_y = vec3(0.0);
-        sample_identity = vec3(pixel, layer_index);
+        sample_identity = vec3(vec2(pixel), float(layer_index));
         return;
     }
 
@@ -95,7 +95,7 @@ void main() {
         sample_local_position = vec3(0.0);
         sample_footprint_x = vec3(0.0);
         sample_footprint_y = vec3(0.0);
-        sample_identity = vec3(pixel, layer_index);
+        sample_identity = vec3(vec2(pixel), float(layer_index));
         return;
     }
     gl_Position = clip_position;
