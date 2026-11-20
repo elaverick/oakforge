@@ -334,9 +334,21 @@ class OpenGLViewer:
     def _set_canopy_mode(self, mode: str) -> None:
         if mode not in {"polygons", "impostor"}:
             raise ValueError(f"Unknown canopy representation: {mode}")
+        if mode != self.canopy_mode:
+            self._finish_mode_sample()
+        else:
+            # Changing hierarchy depth or visibility restarts timing for the
+            # same representation without removing its last completed result.
+            self.mode_sample_frames = 0
+            self.mode_sample_seconds = 0.0
+            self.mode_gpu_samples = []
+        self.mode_sample_generation += 1
         self._release_canopy_representation()
         self.canopy_mode = mode
         if not self.show_leaves or self.max_depth < 4:
+            self.mode_sample_frames = 0
+            self.mode_sample_seconds = 0.0
+            self.mode_gpu_samples = []
             return
         if mode == "polygons":
             self._upload_canopy_polygons()
@@ -344,6 +356,14 @@ class OpenGLViewer:
             renderer = DepthImpostorRenderer(self.gl, self.impostor_directory)
             self.canopy_renderer = renderer
             self.gpu_allocations["canopy_impostor"] = renderer.allocated_bytes
+            self.representation_metrics["impostor"].update({
+                "triangles": 2,
+                "vertices": 6,
+                "gpu_bytes": renderer.allocated_bytes,
+            })
+        self.mode_sample_frames = 0
+        self.mode_sample_seconds = 0.0
+        self.mode_gpu_samples = []
         self.status_message = f"Canopy representation: {mode.upper()}"
 
     def _upload_grid_mesh(self) -> None:
