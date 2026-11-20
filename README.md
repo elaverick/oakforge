@@ -66,6 +66,10 @@ Viewer controls:
 | `4` | Add tertiary branches |
 | `5` | Full tree, including terminal twigs and leaves |
 | `I` | Toggle canopy between genuine leaf polygons and the depth impostor |
+| `C` | Cycle impostor splats: square, round, angular and foliage breakup |
+| `[` / `]` | Decrease / increase impostor foliage noise strength |
+| `,` / `.` | Decrease / increase impostor foliage noise scale |
+| `-` / `=` | Decrease / increase impostor angularity |
 | `L` | Toggle canopy visibility |
 | `W` | Toggle polygon wireframe |
 | `V` | Toggle VSync (off by default for benchmarking) |
