@@ -556,7 +556,8 @@ class OpenGLViewer:
             renderer = self.canopy_renderer
             appearance = (
                 f"{renderer.style.upper()} | angularity {renderer.angularity:.2f} "
-                f"| noise {renderer.noise_intensity:.2f} @ {renderer.noise_scale:.1f}"
+                f"| noise {renderer.noise_intensity:.2f} @ {renderer.noise_scale:.1f} "
+                f"| splat {renderer.splat_scale:.1f}x"
             )
         else:
             appearance = "inactive (switch to depth impostor with I)"
@@ -594,7 +595,7 @@ class OpenGLViewer:
             f"Telemetry: {telemetry['backend']}   Renderer: {telemetry['gpu_name']}",
             f"Atlas view: {atlas_view}",
             f"Impostor style: {appearance}",
-            "Appearance: C cycle | [/] noise strength | ,/. noise scale | -/= angularity",
+            "Appearance: C style | [/] noise | ,/. scale | -/= angularity | PgUp/Dn splat size",
             "Keys: I representation | L canopy | 1-5 structure | W wireframe | V VSync | R regenerate | B reset averages",
         ]
         if self.status_message:
@@ -735,7 +736,17 @@ class OpenGLViewer:
 
     def _on_key(self, window: Any, key: int, scan_code: int, action: int, modifiers: int) -> None:
         glfw = self.glfw
-        if action != glfw.PRESS:
+        tuning_keys = {
+            glfw.KEY_LEFT_BRACKET, glfw.KEY_RIGHT_BRACKET,
+            glfw.KEY_COMMA, glfw.KEY_PERIOD,
+            glfw.KEY_MINUS, glfw.KEY_EQUAL,
+            glfw.KEY_PAGE_UP, glfw.KEY_PAGE_DOWN,
+        }
+        if action not in (glfw.PRESS, glfw.REPEAT):
+            return
+        # GLFW sends REPEAT while a tuning key is held. Keep toggle, regenerate
+        # and other one-shot actions press-only to avoid accidental repetition.
+        if action == glfw.REPEAT and key not in tuning_keys:
             return
         if key == glfw.KEY_ESCAPE:
             glfw.set_window_should_close(window, True)
@@ -757,25 +768,32 @@ class OpenGLViewer:
                 self.status_message = "Switch to the depth impostor with I to change foliage style"
         elif key in (glfw.KEY_LEFT_BRACKET, glfw.KEY_RIGHT_BRACKET):
             if self.canopy_renderer is not None:
-                delta = -0.1 if key == glfw.KEY_LEFT_BRACKET else 0.1
+                delta = -0.25 if key == glfw.KEY_LEFT_BRACKET else 0.25
                 value = self.canopy_renderer.adjust_noise_intensity(delta)
                 self.status_message = f"Foliage noise intensity: {value:.2f}"
             else:
                 self.status_message = "Switch to the depth impostor with I to tune foliage noise"
         elif key in (glfw.KEY_COMMA, glfw.KEY_PERIOD):
             if self.canopy_renderer is not None:
-                delta = -0.5 if key == glfw.KEY_COMMA else 0.5
+                delta = -3.0 if key == glfw.KEY_COMMA else 3.0
                 value = self.canopy_renderer.adjust_noise_scale(delta)
                 self.status_message = f"Foliage noise scale: {value:.1f}"
             else:
                 self.status_message = "Switch to the depth impostor with I to tune foliage noise"
         elif key in (glfw.KEY_MINUS, glfw.KEY_EQUAL):
             if self.canopy_renderer is not None:
-                delta = -0.1 if key == glfw.KEY_MINUS else 0.1
+                delta = -0.2 if key == glfw.KEY_MINUS else 0.2
                 value = self.canopy_renderer.adjust_angularity(delta)
                 self.status_message = f"Foliage angularity: {value:.2f}"
             else:
                 self.status_message = "Switch to the depth impostor with I to tune foliage shape"
+        elif key in (glfw.KEY_PAGE_DOWN, glfw.KEY_PAGE_UP):
+            if self.canopy_renderer is not None:
+                delta = -0.4 if key == glfw.KEY_PAGE_DOWN else 0.4
+                value = self.canopy_renderer.adjust_splat_scale(delta)
+                self.status_message = f"Impostor footprint scale: {value:.1f}x"
+            else:
+                self.status_message = "Switch to the depth impostor with I to tune footprint size"
         elif key == glfw.KEY_L:
             self.show_leaves = not self.show_leaves
             self._set_canopy_mode(self.canopy_mode)
@@ -855,6 +873,7 @@ class OpenGLViewer:
         print("  [ / ]                       : decrease / increase foliage edge-noise strength")
         print("  , / .                       : decrease / increase foliage noise scale")
         print("  - / =                       : decrease / increase angularity")
+        print("  PageUp / PageDown           : increase / decrease impostor footprint size")
         print("  B                           : reset representation benchmark averages")
         print("  L                           : toggle canopy visibility")
         print("  1 / 2 / 3 / 4 / 5           : trunk / primary / secondary / tertiary / full tree")
