@@ -266,7 +266,7 @@ class DepthImpostorRenderer:
             gl.glDeleteBuffers(1, [self.vbo])
             self.vbo = 0
         if self.textures:
-            gl.glDeleteTextures(list(self.textures.values()))
+            gl.glDeleteTextures(len(self.textures), list(self.textures.values()))
             self.textures.clear()
         if self.program:
             gl.glDeleteProgram(self.program)
