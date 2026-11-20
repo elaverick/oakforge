@@ -303,7 +303,7 @@ def select_view_blend(
         return [int(index) for index in indices], weights / np.sum(weights)
 
     try:
-        from scipy.spatial import ConvexHull, QhullError
+        from scipy.spatial import ConvexHull
 
         hull = ConvexHull(directions)
         for simplex in hull.simplices:
@@ -317,7 +317,9 @@ def select_view_blend(
                 total = float(np.sum(weights))
                 if total > 1e-10:
                     return [int(index) for index in simplex], weights / total
-    except (ImportError, ValueError, QhullError):
+    except Exception:
+        # SciPy is a transitive dependency of scikit-image, but retain a
+        # deterministic fallback if its convex hull cannot be constructed.
         pass
 
     # Defensive fallback for an unavailable/degenerate convex hull.
