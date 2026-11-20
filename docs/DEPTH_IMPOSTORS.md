@@ -2,8 +2,8 @@
 
 OakForge keeps the trunk, roots and structural branches as genuine polygon
 geometry. Only the leaf canopy is replaced by the impostor. The runtime
-representation is a view-dependent, layered depth surface rather than a flat
-colour billboard.
+representation is a layered, depth-bearing capture that is forward-projected
+into the active camera as depth-tested point splats.
 
 ## Bake the canopy
 
@@ -18,9 +18,9 @@ python -m oakforge.render.impostor \
 ```
 
 The tile size can be any value of at least 32; power-of-two dimensions are not
-required by the OpenGL texture-array implementation. Increase it to 512 for
-close-up assets, or reduce the view count/layer count for a smaller runtime
-asset. The maximum supported layer count is four.
+required by the OpenGL texture-array implementation. Increase it for close-up
+assets, or reduce the view count/layer count for a smaller runtime asset. The
+maximum supported layer count is four.
 
 The default bake captures leaves only. Add `--include-twigs` to capture
 terminal twig and spray tubes as well. Trunk, roots and structural branches
@@ -42,26 +42,36 @@ Depth atlases are 16-bit greyscale images, not 8-bit colour-encoded depth.
 
 ## Runtime reconstruction
 
-The viewer draws only a screen-space rectangle around the projected canopy
-bounds. For each covered screen pixel, the fragment shader:
+The runtime deliberately avoids inverse texture-coordinate searches and
+cross-view averaging. Those operations are unstable around foliage silhouettes
+and can combine unrelated leaves into positions that do not exist.
 
-- Builds a ray from the active camera through that pixel.
-- Intersects the ray with each capture view's centre plane to establish initial
-  texture coordinates.
-- Uses iterative inverse projection to find the source texel whose reconstructed
-  3D point projects back to that exact screen pixel.
-- Evaluates every available depth layer and keeps the closest valid surface
-  along the current camera ray.
-- Blends the three surrounding capture views using spherical convex-hull
-  barycentric weights. The blend is continuous across the capture-triangle
-  boundaries; it does not snap from one billboard to another.
-- Reconstructs the final world position and writes it to the scene depth buffer,
-  so the canopy depth-tests correctly against the polygon trunk and branches.
+Instead, for the capture direction closest to the active camera, the vertex
+shader:
 
-This is a layered depth impostor: it retains several visible surfaces along a
-capture ray and uses those surfaces to produce camera-dependent parallax. It
-does not preserve every leaf as independently addressable geometry, and it is
-not a full volumetric or wind-deformable canopy.
+- Visits each texel in each of the captured depth layers.
+- Leaves transparent texels empty; it never substitutes a nearby unrelated
+  leaf to fill a hole.
+- Reconstructs the texel's actual canopy-space position from its capture UV and
+  stored depth.
+- Projects that 3D position through the active camera matrix.
+- Estimates the projected source-texel footprint and rasterises a small point
+  splat at that position.
+
+All layers are drawn into the normal scene depth buffer. The depth test resolves
+occlusion between the front and rear leaf samples, and between the canopy and
+the polygon trunk/branches. The rendered samples retain the real depth values;
+there is no averaging of the positions of unrelated surfaces.
+
+Only one capture view is used for a frame. This is intentional: adjacent
+captures do not contain guaranteed pixel-to-pixel correspondences, so blending
+their world positions created incoherent phantom geometry. The view is selected
+by maximum directional alignment. As the camera crosses a capture boundary,
+the source view changes; the reconstructed samples remain genuine surfaces,
+although the view transition can still be visible.
+
+This is a layered depth impostor, not a full volumetric canopy. It retains up to
+four visible surfaces per capture pixel, not every leaf at every angle.
 
 ## Interactive comparison
 
@@ -93,8 +103,9 @@ The panel reports:
 
 - **Model triangles:** the full source polygon model's wood and leaf triangle
   counts, independent of the active canopy representation.
-- **Active triangles:** wood triangles plus either all polygon canopy triangles
-  or the two triangles used to rasterise the screen-space impostor region.
+- **Active triangles:** wood triangles plus the polygon canopy triangles when
+  polygon mode is active. The impostor itself is reported as depth-tested point
+  samples, not falsely counted as two triangles.
 - **Tracked viewer allocations:** bytes uploaded for known vertex buffers and
   the three layered texture arrays. This is an exact sum of those requested
   resource sizes, not a driver-reported process total.
@@ -112,11 +123,10 @@ size, view count or layer count when targeting a smaller memory budget.
 
 ## Validation
 
-The test suite checks depth encoding, spherical view interpolation and runtime
-shader compilation. The Xvfb-backed smoke test also inspects the baked atlases
-to verify that secondary depth layers contain geometry, then renders from the
-capture direction and a displaced camera position to exercise parallax
-reprojection.
+The test suite checks depth encoding, capture selection and runtime shader
+compilation. The Xvfb-backed smoke test also inspects the baked atlases to
+verify that secondary depth layers contain geometry, then renders the
+forward-projected splats from the capture direction and a displaced camera.
 
 Run the tests and smoke bake with:
 
@@ -132,9 +142,12 @@ xvfb-run -a env OAKFORGE_GL_SMOKE=1 python -m unittest discover -s tests \
 
 - Four depth-peeling layers provide a finite number of visible surfaces. Dense
   foliage can still contain more layers than the asset stores.
-- Capture blending and parallax depend on the baked view density and source
-  resolution. Extreme close-ups or camera positions substantially outside the
-  capture coverage can reveal reconstruction gaps.
+- The runtime uses the nearest capture direction rather than blending views.
+  Switching captures can cause a small change in leaf coverage as the camera
+  crosses capture directions.
+- Source texel density and projected point-splat size determine coverage.
+  Very close views or severe grazing angles can still reveal holes or soften
+  fine leaf detail.
 - The capture is static. Wind animation requires multiple baked states or a
   separate animated near-field representation.
 - Fine twigs remain optional because their appearance is highly dependent on
