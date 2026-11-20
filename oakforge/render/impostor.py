@@ -317,6 +317,7 @@ def bake_depth_impostor(tree, output_directory: str | Path,
         manifest = {
             "format": "oakforge-canopy-depth-impostor-v1",
             "tree_name": tree.name,
+            "tree_seed": tree.metadata.get("seed"),
             "source_geometry": {
                 "scope": "canopy",
                 "leaf_count": len(tree.leaves),
@@ -332,6 +333,7 @@ def bake_depth_impostor(tree, output_directory: str | Path,
                       "tile_pitch": settings.tile_size + settings.padding * 2},
             "bounds": {"min": bounds_min.tolist(), "max": bounds_max.tolist(),
                        "centre": centre.tolist(), "extent": extent},
+            "depth_projection": {"near": near, "far": far},
             "views": [{"index": i, "direction": direction.tolist(),
                        "uv_rect": [((i % settings.atlas_columns) * (settings.tile_size + settings.padding * 2) + settings.padding) / width,
                                    ((i // settings.atlas_columns) * (settings.tile_size + settings.padding * 2) + settings.padding) / height,
@@ -355,12 +357,19 @@ def main() -> int:
     parser.add_argument("--views", type=int, default=64)
     parser.add_argument("--tile-size", type=int, default=128)
     parser.add_argument("--columns", type=int, default=8)
+    parser.add_argument("--seed", type=int, help="Override the recipe seed for this bake")
     parser.add_argument(
         "--include-twigs", action="store_true",
         help="Include terminal twig and spray tubes in the canopy impostor bake",
     )
     args = parser.parse_args()
-    tree = generate_from_file(args.config)
+    if args.seed is None:
+        tree = generate_from_file(args.config)
+    else:
+        from oakforge.generation import generate_tree, load_recipe
+        recipe = load_recipe(args.config)
+        recipe["tree"]["seed"] = args.seed
+        tree = generate_tree(recipe)
     manifest = bake_depth_impostor(
         tree, args.output,
         ImpostorSettings(
