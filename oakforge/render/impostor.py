@@ -195,11 +195,10 @@ def _orthographic_view_projection(direction: np.ndarray, centre: np.ndarray,
 
 def bake_depth_impostor(tree, output_directory: str | Path,
                         settings: ImpostorSettings = ImpostorSettings()) -> dict:
-    """Render the canopy into colour, normal and depth view atlases.
+    """Bake several depth-peeling layers for every canopy capture direction.
 
-    Leaves are always captured. Terminal twig and spray geometry is optional;
-    the trunk, roots and structural branches are excluded so they can use
-    conventional polygon LOD independently. Requires desktop OpenGL 3.3.
+    Only leaves and optional terminal twigs/sprays are captured. Each pixel can
+    retain up to settings.layers ordered surfaces instead of just the front hit.
     """
     settings.validate()
     try:
@@ -221,7 +220,9 @@ def bake_depth_impostor(tree, output_directory: str | Path,
     extent = float(np.max(bounds_max - bounds_min)) * 1.04
     near = 0.01
     far = extent * 3.0
-    interleaved = np.ascontiguousarray(np.column_stack((positions, normals, colours)), dtype=np.float32)
+    interleaved = np.ascontiguousarray(
+        np.column_stack((positions, normals, colours)), dtype=np.float32
+    )
 
     if not glfw.init():
         raise RuntimeError("GLFW could not initialise an off-screen OpenGL context")
@@ -229,113 +230,205 @@ def bake_depth_impostor(tree, output_directory: str | Path,
     glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
     glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
     glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-    window = glfw.create_window(settings.tile_size, settings.tile_size, "OakForge impostor bake", None, None)
+    window = glfw.create_window(settings.tile_size, settings.tile_size,
+                                "OakForge layered impostor bake", None, None)
     if not window:
         glfw.terminate()
         raise RuntimeError("Could not create an OpenGL 3.3 off-screen context")
 
     output = Path(output_directory)
     width, height = atlas_dimensions(settings)
-    colour_atlas = np.zeros((height, width, 4), dtype=np.uint8)
-    normal_atlas = np.zeros_like(colour_atlas)
-    depth_atlas = np.full((height, width, 3), 255, dtype=np.uint8)
+    pitch = settings.tile_size + settings.padding * 2
+    colour_atlases = [
+        np.zeros((height, width, 4), dtype=np.uint8) for _ in range(settings.layers)
+    ]
+    normal_atlases = [
+        np.zeros((height, width, 4), dtype=np.uint8) for _ in range(settings.layers)
+    ]
+    depth_atlases = [
+        np.full((height, width), 65535, dtype=np.uint16)
+        for _ in range(settings.layers)
+    ]
 
+    program = vao = vbo = framebuffer = colour_texture = normal_texture = depth_buffer = 0
+    depth_textures: list[int] = []
     try:
         glfw.make_context_current(window)
         program = _compile_program(gl)
-        vao = gl.glGenVertexArrays(1)
-        vbo = gl.glGenBuffers(1)
+        vao = int(gl.glGenVertexArrays(1))
+        vbo = int(gl.glGenBuffers(1))
         gl.glBindVertexArray(vao)
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, vbo)
         gl.glBufferData(gl.GL_ARRAY_BUFFER, interleaved.nbytes, interleaved, gl.GL_STATIC_DRAW)
         stride = 9 * 4
         for location, size, offset in ((0, 3, 0), (1, 3, 12), (2, 3, 24)):
             gl.glEnableVertexAttribArray(location)
-            gl.glVertexAttribPointer(location, size, gl.GL_FLOAT, gl.GL_FALSE, stride, ctypes.c_void_p(offset))
+            gl.glVertexAttribPointer(location, size, gl.GL_FLOAT, gl.GL_FALSE,
+                                     stride, ctypes.c_void_p(offset))
 
-        framebuffer = gl.glGenFramebuffers(1)
+        framebuffer = int(gl.glGenFramebuffers(1))
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, framebuffer)
-        attachments = []
-        for attachment, internal_format in ((gl.GL_COLOR_ATTACHMENT0, gl.GL_RGBA8),
-                                            (gl.GL_COLOR_ATTACHMENT1, gl.GL_RGBA8)):
-            texture = gl.glGenTextures(1)
+
+        def make_texture(internal_format: int, pixel_format: int, pixel_type: int) -> int:
+            texture = int(gl.glGenTextures(1))
             gl.glBindTexture(gl.GL_TEXTURE_2D, texture)
-            gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, internal_format, settings.tile_size,
-                            settings.tile_size, 0, gl.GL_RGBA, gl.GL_UNSIGNED_BYTE, None)
+            gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, internal_format,
+                            settings.tile_size, settings.tile_size, 0,
+                            pixel_format, pixel_type, None)
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_NEAREST)
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_NEAREST)
-            gl.glFramebufferTexture2D(gl.GL_FRAMEBUFFER, attachment, gl.GL_TEXTURE_2D, texture, 0)
-            attachments.append(texture)
-        depth_buffer = gl.glGenRenderbuffers(1)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+            return texture
+
+        colour_texture = make_texture(gl.GL_RGBA8, gl.GL_RGBA, gl.GL_UNSIGNED_BYTE)
+        normal_texture = make_texture(gl.GL_RGBA8, gl.GL_RGBA, gl.GL_UNSIGNED_BYTE)
+        depth_textures = [
+            make_texture(gl.GL_R32F, gl.GL_RED, gl.GL_FLOAT)
+            for _ in range(settings.layers)
+        ]
+        depth_buffer = int(gl.glGenRenderbuffers(1))
         gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, depth_buffer)
         gl.glRenderbufferStorage(gl.GL_RENDERBUFFER, gl.GL_DEPTH_COMPONENT24,
                                  settings.tile_size, settings.tile_size)
         gl.glFramebufferRenderbuffer(gl.GL_FRAMEBUFFER, gl.GL_DEPTH_ATTACHMENT,
                                      gl.GL_RENDERBUFFER, depth_buffer)
-        gl.glDrawBuffers(2, [gl.GL_COLOR_ATTACHMENT0, gl.GL_COLOR_ATTACHMENT1])
-        if gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER) != gl.GL_FRAMEBUFFER_COMPLETE:
-            raise RuntimeError("Impostor bake framebuffer is incomplete")
+        gl.glDrawBuffers(3, [
+            gl.GL_COLOR_ATTACHMENT0, gl.GL_COLOR_ATTACHMENT1, gl.GL_COLOR_ATTACHMENT2
+        ])
 
         gl.glViewport(0, 0, settings.tile_size, settings.tile_size)
         gl.glEnable(gl.GL_DEPTH_TEST)
+        gl.glDepthFunc(gl.GL_LESS)
+        gl.glDisable(gl.GL_CULL_FACE)
         gl.glUseProgram(program)
         matrix_location = gl.glGetUniformLocation(program, "view_projection")
-        if matrix_location < 0:
-            raise RuntimeError("The view_projection uniform was not found in the linked impostor shader")
+        previous_location = gl.glGetUniformLocation(program, "previous_depth")
+        has_previous_location = gl.glGetUniformLocation(program, "has_previous_depth")
+        tile_size_location = gl.glGetUniformLocation(program, "tile_size")
+        epsilon_location = gl.glGetUniformLocation(program, "peel_epsilon")
+        required = (matrix_location, previous_location, has_previous_location,
+                    tile_size_location, epsilon_location)
+        if any(location < 0 for location in required):
+            raise RuntimeError("Layered impostor bake shader is missing a required uniform")
+        gl.glUniform1i(previous_location, 0)
+        gl.glUniform1i(tile_size_location, settings.tile_size)
+        gl.glUniform1f(epsilon_location, 1.0 / 16777215.0 * 4.0)
+
         directions = fibonacci_directions(settings.views, settings.elevation_bias)
         print(f"Impostor GL: {gl.glGetString(gl.GL_VERSION).decode('utf-8', 'replace')}")
-        print(f"Impostor mesh: {len(interleaved)} vertices, {matrix_location=}, framebuffer={gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER)}")
-        for index, direction in enumerate(directions):
-            gl.glClearColor(0.0, 0.0, 0.0, 0.0)
-            gl.glClearDepth(1.0)
-            gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-            matrix = _orthographic_view_projection(direction, centre, extent, near, far)
-            # Match the established viewer upload path: NumPy row-major + GL transpose.
-            gl.glUniformMatrix4fv(matrix_location, 1, gl.GL_TRUE, matrix)
-            gl.glBindVertexArray(vao)
-            gl.glDrawArrays(gl.GL_TRIANGLES, 0, len(interleaved))
-            gl.glFinish()
-            draw_error = gl.glGetError()
-            if draw_error != gl.GL_NO_ERROR:
-                raise RuntimeError(f"OpenGL error while drawing impostor view {index}: 0x{draw_error:04x}")
-            col = index % settings.atlas_columns
-            row = index // settings.atlas_columns
-            pitch = settings.tile_size + settings.padding * 2
-            x, y = col * pitch + settings.padding, row * pitch + settings.padding
-            gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT0)
-            colour = np.frombuffer(gl.glReadPixels(0, 0, settings.tile_size, settings.tile_size,
-                                                    gl.GL_RGBA, gl.GL_UNSIGNED_BYTE), dtype=np.uint8)
-            gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT1)
-            normal = np.frombuffer(gl.glReadPixels(0, 0, settings.tile_size, settings.tile_size,
-                                                    gl.GL_RGBA, gl.GL_UNSIGNED_BYTE), dtype=np.uint8)
-            colour = colour.reshape(settings.tile_size, settings.tile_size, 4)[::-1]
-            normal = normal.reshape(settings.tile_size, settings.tile_size, 4)[::-1]
-            if index == 0:
-                print(f"Impostor view 0: matrix={matrix.tolist()}, covered={int(np.count_nonzero(colour[:, :, 3]))}")
-            pad = settings.padding
-            x0, y0 = x - pad, y - pad
-            colour_tile = np.pad(colour, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
-            normal_tile = np.pad(normal, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
-            colour_atlas[y0:y0 + pitch, x0:x0 + pitch] = colour_tile
-            normal_atlas[y0:y0 + pitch, x0:x0 + pitch] = normal_tile
-            depth = np.frombuffer(gl.glReadPixels(0, 0, settings.tile_size, settings.tile_size,
-                                                  gl.GL_DEPTH_COMPONENT, gl.GL_FLOAT), dtype=np.float32)
-            depth = np.clip(depth.reshape(settings.tile_size, settings.tile_size)[::-1], 0.0, 1.0)
-            depth24 = np.rint(depth * 16777215.0).astype(np.uint32)
-            depth_rgb = np.stack(((depth24 >> 16) & 255, (depth24 >> 8) & 255, depth24 & 255), axis=-1).astype(np.uint8)
-            depth_tile = np.pad(depth_rgb, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
-            depth_atlas[y0:y0 + pitch, x0:x0 + pitch] = depth_tile
+        print(
+            f"Layered impostor mesh: {len(interleaved):,} vertices, "
+            f"{settings.views} views x {settings.layers} depth layers at "
+            f"{settings.tile_size}px"
+        )
 
-        write_png(output / "colour.png", colour_atlas)
-        write_png(output / "normal.png", normal_atlas)
-        write_png(output / "depth.png", depth_atlas)
-        # Do not publish a superficially successful bake with empty atlases.
-        if not np.any(colour_atlas[:, :, 3]):
+        for view_index, direction in enumerate(directions):
+            matrix = _orthographic_view_projection(direction, centre, extent, near, far)
+            gl.glUniformMatrix4fv(matrix_location, 1, gl.GL_TRUE, matrix)
+            col = view_index % settings.atlas_columns
+            row = view_index // settings.atlas_columns
+            x = col * pitch + settings.padding
+            y = row * pitch + settings.padding
+            for layer_index in range(settings.layers):
+                gl.glFramebufferTexture2D(
+                    gl.GL_FRAMEBUFFER, gl.GL_COLOR_ATTACHMENT0,
+                    gl.GL_TEXTURE_2D, colour_texture, 0
+                )
+                gl.glFramebufferTexture2D(
+                    gl.GL_FRAMEBUFFER, gl.GL_COLOR_ATTACHMENT1,
+                    gl.GL_TEXTURE_2D, normal_texture, 0
+                )
+                gl.glFramebufferTexture2D(
+                    gl.GL_FRAMEBUFFER, gl.GL_COLOR_ATTACHMENT2,
+                    gl.GL_TEXTURE_2D, depth_textures[layer_index], 0
+                )
+                if gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER) != gl.GL_FRAMEBUFFER_COMPLETE:
+                    raise RuntimeError("Layered impostor bake framebuffer is incomplete")
+
+                gl.glClearBufferfv(
+                    gl.GL_COLOR, 0, np.asarray([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+                )
+                gl.glClearBufferfv(
+                    gl.GL_COLOR, 1, np.asarray([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+                )
+                gl.glClearBufferfv(
+                    gl.GL_COLOR, 2, np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+                )
+                gl.glClearDepth(1.0)
+                gl.glClear(gl.GL_DEPTH_BUFFER_BIT)
+
+                gl.glActiveTexture(gl.GL_TEXTURE0)
+                previous_texture = depth_textures[layer_index - 1] if layer_index else 0
+                gl.glBindTexture(gl.GL_TEXTURE_2D, previous_texture)
+                gl.glUniform1i(has_previous_location, 1 if layer_index else 0)
+                gl.glBindVertexArray(vao)
+                gl.glDrawArrays(gl.GL_TRIANGLES, 0, len(interleaved))
+                gl.glFinish()
+                draw_error = gl.glGetError()
+                if draw_error != gl.GL_NO_ERROR:
+                    raise RuntimeError(
+                        f"OpenGL error in view {view_index}, depth layer {layer_index}: "
+                        f"0x{draw_error:04x}"
+                    )
+
+                gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT0)
+                colour = np.frombuffer(
+                    gl.glReadPixels(0, 0, settings.tile_size, settings.tile_size,
+                                    gl.GL_RGBA, gl.GL_UNSIGNED_BYTE), dtype=np.uint8
+                ).reshape(settings.tile_size, settings.tile_size, 4)[::-1]
+                covered = int(np.count_nonzero(colour[:, :, 3]))
+                if covered == 0:
+                    break
+
+                gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT1)
+                normal = np.frombuffer(
+                    gl.glReadPixels(0, 0, settings.tile_size, settings.tile_size,
+                                    gl.GL_RGBA, gl.GL_UNSIGNED_BYTE), dtype=np.uint8
+                ).reshape(settings.tile_size, settings.tile_size, 4)[::-1]
+                gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT2)
+                depth = np.frombuffer(
+                    gl.glReadPixels(0, 0, settings.tile_size, settings.tile_size,
+                                    gl.GL_RED, gl.GL_FLOAT), dtype=np.float32
+                ).reshape(settings.tile_size, settings.tile_size)[::-1]
+                depth_u16 = np.rint(np.clip(depth, 0.0, 1.0) * 65535.0).astype(np.uint16)
+
+                pad = settings.padding
+                x0, y0 = x - pad, y - pad
+                colour_tile = np.pad(colour, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+                normal_tile = np.pad(normal, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+                depth_tile = np.pad(depth_u16, ((pad, pad), (pad, pad)), mode="edge")
+                colour_atlases[layer_index][y0:y0 + pitch, x0:x0 + pitch] = colour_tile
+                normal_atlases[layer_index][y0:y0 + pitch, x0:x0 + pitch] = normal_tile
+                depth_atlases[layer_index][y0:y0 + pitch, x0:x0 + pitch] = depth_tile
+
+                if view_index == 0:
+                    print(
+                        f"View 1 depth layer {layer_index + 1}: "
+                        f"{covered:,} covered pixels"
+                    )
+
+        if not any(np.any(atlas[:, :, 3]) for atlas in colour_atlases):
             raise RuntimeError(
-                "Impostor bake rendered no covered pixels; check the view-projection matrix and GL draw state"
+                "Impostor bake rendered no covered pixels; check the view-projection matrix and GL state"
             )
+
+        colour_files = []
+        normal_files = []
+        depth_files = []
+        for layer_index in range(settings.layers):
+            colour_name = f"colour_layer_{layer_index}.png"
+            normal_name = f"normal_layer_{layer_index}.png"
+            depth_name = f"depth_layer_{layer_index}.png"
+            write_png(output / colour_name, colour_atlases[layer_index])
+            write_png(output / normal_name, normal_atlases[layer_index])
+            write_png(output / depth_name, depth_atlases[layer_index])
+            colour_files.append(colour_name)
+            normal_files.append(normal_name)
+            depth_files.append(depth_name)
+
         manifest = {
-            "format": "oakforge-canopy-depth-impostor-v2",
+            "format": "oakforge-canopy-layered-depth-impostor-v3",
             "tree_name": tree.name,
             "tree_seed": tree.metadata.get("seed"),
             "source_geometry": {
@@ -347,36 +440,65 @@ def bake_depth_impostor(tree, output_directory: str | Path,
                 "terminal_twig_branches_included": settings.include_twigs,
             },
             "settings": asdict(settings),
-            "atlas": {"width": width, "height": height, "columns": settings.atlas_columns,
-                      "rows": math.ceil(settings.views / settings.atlas_columns),
-                      "tile_size": settings.tile_size, "padding": settings.padding,
-                      "tile_pitch": settings.tile_size + settings.padding * 2},
-            "bounds": {"min": bounds_min.tolist(), "max": bounds_max.tolist(),
-                       "centre": centre.tolist(), "extent": extent},
+            "atlas": {
+                "width": width, "height": height, "columns": settings.atlas_columns,
+                "rows": math.ceil(settings.views / settings.atlas_columns),
+                "tile_size": settings.tile_size, "padding": settings.padding,
+                "tile_pitch": pitch,
+            },
+            "bounds": {
+                "min": bounds_min.tolist(), "max": bounds_max.tolist(),
+                "centre": centre.tolist(), "extent": extent,
+            },
             "depth_projection": {"near": near, "far": far},
-            "views": [{"index": i, "direction": direction.tolist(),
-                       "uv_rect": [((i % settings.atlas_columns) * (settings.tile_size + settings.padding * 2) + settings.padding) / width,
-                                   ((i // settings.atlas_columns) * (settings.tile_size + settings.padding * 2) + settings.padding) / height,
-                                   settings.tile_size / width, settings.tile_size / height]}
-                      for i, direction in enumerate(directions)],
+            "views": [
+                {"index": index, "direction": direction.tolist()}
+                for index, direction in enumerate(directions)
+            ],
+            "view_blending": "convex-hull spherical barycentric interpolation",
+            "depth_layers": {
+                "count": settings.layers,
+                "ordering": "front-to-back per capture pixel using iterative depth peeling",
+            },
             "runtime_geometry": {"vertices": 4, "triangles": 2},
-            "textures": {"colour": "colour.png", "normal": "normal.png", "depth": "depth.png"},
-            "depth_encoding": "OpenGL orthographic depth, linear over [0,1], packed big-endian into RGB24",
+            "textures": {
+                "colour": colour_files, "normal": normal_files, "depth": depth_files,
+            },
+            "depth_encoding": "16-bit unsigned normalised OpenGL orthographic depth",
         }
-        (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        (output / "manifest.json").write_text(
+            json.dumps(manifest, indent=2), encoding="utf-8"
+        )
         return manifest
     finally:
+        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
+        if depth_textures:
+            gl.glDeleteTextures(len(depth_textures), depth_textures)
+        if colour_texture:
+            gl.glDeleteTextures(1, [colour_texture])
+        if normal_texture:
+            gl.glDeleteTextures(1, [normal_texture])
+        if depth_buffer:
+            gl.glDeleteRenderbuffers(1, [depth_buffer])
+        if framebuffer:
+            gl.glDeleteFramebuffers(1, [framebuffer])
+        if vao:
+            gl.glDeleteVertexArrays(1, [vao])
+        if vbo:
+            gl.glDeleteBuffers(1, [vbo])
+        if program:
+            gl.glDeleteProgram(program)
         glfw.destroy_window(window)
         glfw.terminate()
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Bake a game-ready multi-view depth impostor for an OakForge canopy")
     parser.add_argument("--config", default="configs/english_oak.yaml")
     parser.add_argument("--output", default="build/impostor")
     parser.add_argument("--views", type=int, default=64)
-    parser.add_argument("--tile-size", type=int, default=128)
+    parser.add_argument("--tile-size", type=int, default=384)
     parser.add_argument("--columns", type=int, default=8)
+    parser.add_argument("--layers", type=int, default=4, help="Depth-peeling layers per capture (1-4)")
     parser.add_argument("--seed", type=int, help="Override the recipe seed for this bake")
     parser.add_argument(
         "--include-twigs", action="store_true",
@@ -394,7 +516,8 @@ def main() -> int:
         tree, args.output,
         ImpostorSettings(
             views=args.views, tile_size=args.tile_size,
-            atlas_columns=args.columns, include_twigs=args.include_twigs,
+            atlas_columns=args.columns, layers=args.layers,
+            include_twigs=args.include_twigs,
         ),
     )
     print(f"Baked {len(manifest['views'])} views to {Path(args.output).resolve()}")
