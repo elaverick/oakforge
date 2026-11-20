@@ -127,8 +127,8 @@ class OpenGLViewer:
         self.overlay_vao = 0
         self.overlay_vbo = 0
         self.overlay_texture = 0
-        self.overlay_width = 560
-        self.overlay_height = 254
+        self.overlay_width = 760
+        self.overlay_height = 286
         self.overlay_last_update = 0.0
 
         self.gpu_allocations: dict[str, int] = {}
@@ -287,9 +287,10 @@ class OpenGLViewer:
             self.wood_vao, self.wood_vbo, mesh, "wood_vbo"
         )
         self.wood_triangle_count = self.wood_vertex_count // 3
-        self.model_wood_triangles = self.wood_triangle_count
-        self.model_leaf_triangles = len(self.tree.leaves) * (2 * len(OAK_LEAF_PROFILE) - 1)
-        self.model_total_triangles = self.model_wood_triangles + self.model_leaf_triangles
+        if not hasattr(self, "source_wood_triangles"):
+            self.source_wood_triangles = self.wood_triangle_count
+            self.model_leaf_triangles = len(self.tree.leaves) * (2 * len(OAK_LEAF_PROFILE) - 1)
+            self.model_total_triangles = self.source_wood_triangles + self.model_leaf_triangles
 
     def _upload_canopy_polygons(self) -> None:
         gl = self.gl
@@ -428,7 +429,7 @@ class OpenGLViewer:
         active_canopy_triangles = (
             self.canopy_triangle_count if self.canopy_mode == "polygons"
             else (2 if self.canopy_renderer is not None else 0)
-        )
+        ) if self.show_leaves and self.max_depth >= 4 else 0
         active_triangles = self.wood_triangle_count + active_canopy_triangles
         active_name = "DEPTH IMPOSTOR" if self.canopy_mode == "impostor" else "POLYGON LEAVES"
         allocated = sum(self.gpu_allocations.values())
@@ -444,7 +445,7 @@ class OpenGLViewer:
             "OAKFORGE | CANOPY REPRESENTATION BENCHMARK",
             f"Mode: {active_name}   [I] switch   [L] canopy on/off",
             f"Model triangles: {self.model_total_triangles:,} total",
-            f"  Wood: {self.model_wood_triangles:,}   Leaf polygons: {self.model_leaf_triangles:,}",
+            f"  Wood: {self.source_wood_triangles:,}   Leaf polygons: {self.model_leaf_triangles:,}",
             f"Active triangles: {active_triangles:,} (wood {self.wood_triangle_count:,} + canopy {active_canopy_triangles:,})",
             f"OakForge GPU allocations: {self._format_bytes(allocated)} (tracked buffers/textures)",
             f"Device VRAM: {self._format_bytes(used)} used / {self._format_bytes(total)} total",
@@ -620,6 +621,9 @@ class OpenGLViewer:
             self.max_depth = 4
             self.show_leaves = True
             self._upload_wood_mesh()
+            self.source_wood_triangles = self.wood_triangle_count
+            self.model_leaf_triangles = len(self.tree.leaves) * (2 * len(OAK_LEAF_PROFILE) - 1)
+            self.model_total_triangles = self.source_wood_triangles + self.model_leaf_triangles
             self._set_canopy_mode(previous_mode)
             self.status_message = f"Regenerated seed {self.tree.metadata.get('seed', '?')}"
         elif key == glfw.KEY_F:
