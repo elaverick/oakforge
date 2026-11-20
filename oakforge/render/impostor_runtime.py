@@ -242,13 +242,13 @@ void main() {
     for (int slot = 0; slot < 3; ++slot) {
         float weight = capture_weights[slot];
         if (weight <= 0.00001) continue;
-        SurfaceSample sample = sample_capture_view(
+        SurfaceSample surface_sample = sample_capture_view(
             slot, camera_position, ray_direction, target_ndc
         );
-        if (sample.valid < 0.5) continue;
-        blended_colour += sample.colour * weight;
-        blended_normal += sample.normal * weight;
-        blended_position += sample.world_position * weight;
+        if (surface_sample.valid < 0.5) continue;
+        blended_colour += surface_sample.colour * weight;
+        blended_normal += surface_sample.normal * weight;
+        blended_position += surface_sample.world_position * weight;
         total_weight += weight;
     }
 
@@ -287,8 +287,8 @@ def select_view_blend(
     Convex-hull interpolation is continuous at capture boundaries: the weight
     for the vertex opposite a shared edge reaches zero on that edge.
     """
-    if len(views) < 4:
-        raise ValueError("At least four capture views are required for spherical blending")
+    if len(views) < 3:
+        raise ValueError("At least three capture views are required for spherical blending")
     target = np.asarray(direction, dtype=np.float64)
     target /= max(float(np.linalg.norm(target)), 1e-12)
     directions = np.asarray([view["direction"] for view in views], dtype=np.float64)
