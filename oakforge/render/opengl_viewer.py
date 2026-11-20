@@ -127,6 +127,7 @@ class OpenGLViewer:
         self.mode_gpu_samples: list[float] = []
         self.mode_sample_start = time.perf_counter()
         self.mode_sample_generation = 0
+        self.benchmark_baseline: dict[str, dict[str, float | int | None]] = {}
         self.canopy_mode = "polygons"
         self.canopy_renderer: DepthImpostorRenderer | None = None
         self.show_leaves = True
@@ -530,6 +531,8 @@ class OpenGLViewer:
             f"Polygon canopy: {self.model_leaf_triangles:,} source tris | {self._format_bytes(polygon_bytes)} GPU allocation",
             f"Depth impostor: 2 quad tris | {self._format_bytes(impostor_bytes)} GPU allocation",
             f"Allocation delta: {delta_text}",
+            f"Polygon geometry: {int(polygon['vertices'] or 0):,} vertices / {int(polygon['triangles'] or 0):,} triangles",
+            f"Impostor geometry: {int(impostor['vertices'] or 0):,} quad vertices / {int(impostor['triangles'] or 0):,} triangles",
             f"Device VRAM: {self._format_bytes(used)} used / {self._format_bytes(total)} total",
             f"Process VRAM: {self._format_bytes(process)}   GPU load: {str(util) + '%' if util is not None else 'n/a'}",
             f"GPU memory controller: {str(memory_util) + '%' if memory_util is not None else 'n/a'}",
@@ -729,6 +732,7 @@ class OpenGLViewer:
             self.mode_sample_seconds = 0.0
             self.mode_gpu_samples = []
             self.mode_sample_start = time.perf_counter()
+            self.mode_sample_generation += 1
             self.status_message = "Representation benchmark averages reset"
         elif key == glfw.KEY_F:
             self.camera_yaw = math.radians(38.0)
