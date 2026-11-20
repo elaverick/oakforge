@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from oakforge.core.mesh import build_foliage_mesh, build_tree_mesh
+from oakforge.core.mesh import build_foliage_mesh, build_tree_mesh, build_wood_mesh
 from oakforge.core.models import Branch, Leaf, TreeModel
 
 
@@ -53,10 +53,23 @@ class FoliageMeshTests(unittest.TestCase):
         # Each two-point terminal tube has 12 sides, two end caps and 48 triangles.
         self.assertEqual(canopy_with_twigs.triangle_count - leaves_only.triangle_count, 96)
 
-    def test_standard_tree_mesh_still_contains_wood_and_leaves(self):
+    def test_wood_mesh_excludes_leaves_and_can_drop_terminal_twigs(self):
+        wood_with_twigs = build_wood_mesh(self.tree)
+        structural_wood = build_wood_mesh(self.tree, include_terminal_twigs=False)
+        self.assertEqual(wood_with_twigs.triangle_count - structural_wood.triangle_count, 96)
+
+    def test_hybrid_meshes_recompose_the_legacy_full_tree(self):
         full_tree = build_tree_mesh(self.tree)
-        foliage = build_foliage_mesh(self.tree)
-        self.assertGreater(full_tree.triangle_count, foliage.triangle_count)
+        wood = build_wood_mesh(self.tree)
+        leaves = build_foliage_mesh(self.tree)
+        wood_without_twigs = build_wood_mesh(self.tree, include_terminal_twigs=False)
+        canopy_with_twigs = build_foliage_mesh(self.tree, include_twigs=True)
+
+        self.assertEqual(full_tree.triangle_count, wood.triangle_count + leaves.triangle_count)
+        self.assertEqual(
+            full_tree.triangle_count,
+            wood_without_twigs.triangle_count + canopy_with_twigs.triangle_count,
+        )
 
 
 if __name__ == "__main__":
