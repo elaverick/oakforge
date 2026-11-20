@@ -449,6 +449,11 @@ class OpenGLViewer:
         process = telemetry["process_bytes"]
         util = telemetry["utilization_percent"]
         memory_util = telemetry["memory_utilization_percent"]
+        atlas_view = (
+            f"{self.last_selected_view + 1} / {len(self.canopy_renderer.views)}"
+            if self.canopy_renderer is not None and self.last_selected_view >= 0
+            else "n/a"
+        )
         gpu_frame = f"{self.gpu_scene_ms:.2f} ms" if self.gpu_scene_ms is not None else "n/a"
         frame_ms = f"{self.frame_ms:.2f} ms" if self.frame_ms > 0 else "n/a"
         fps = f"{self.fps:.1f}" if self.fps > 0 else "warming up"
@@ -465,7 +470,7 @@ class OpenGLViewer:
             f"GPU memory controller: {str(memory_util) + '%' if memory_util is not None else 'n/a'}",
             f"Performance: {fps} FPS   CPU frame: {frame_ms}   GPU scene: {gpu_frame}",
             f"Telemetry: {telemetry['backend']}   Renderer: {telemetry['gpu_name']}",
-            f"Atlas view: {self.last_selected_view + 1 if self.last_selected_view >= 0 else 'n/a'} / {len(self.canopy_renderer.views) if self.canopy_renderer else 'n/a'}",
+            f"Atlas view: {atlas_view}",
             "Keys: I representation | L canopy | 1-5 structure | W wireframe | V VSync | R regenerate",
         ]
         if self.status_message:
