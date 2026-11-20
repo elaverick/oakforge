@@ -110,7 +110,9 @@ void main() {
         texelFetch(normal_atlas, ivec3(pixel, slice_index), 0).rgb * 2.0 - 1.0
     );
     sample_local_position = world_position - canopy_centre;
-    sample_identity = vec3(vec2(pixel), float(layer_index));
+    // Use reconstructed object position rather than atlas texel indices so
+    // polygon orientation also remains stable when the selected view changes.
+    sample_identity = sample_local_position;
 
     // Estimate the projected footprint of this capture texel. At a grazing
     // angle, source pixels spread over more screen pixels; splatting that
