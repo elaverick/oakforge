@@ -742,6 +742,7 @@ class OpenGLViewer:
         print("  Drag with left mouse button : orbit camera")
         print("  Mouse wheel                 : zoom")
         print("  I                           : toggle polygon leaves / depth impostor")
+        print("  B                           : reset representation benchmark averages")
         print("  L                           : toggle canopy visibility")
         print("  1 / 2 / 3 / 4 / 5           : trunk / primary / secondary / tertiary / full tree")
         print("  W                           : toggle polygon wireframe")
