@@ -90,6 +90,17 @@ The NVIDIA telemetry is supplied by `nvidia-ml-py` (installed from
 device-wide total/free VRAM from `GL_NVX_gpu_memory_info`. Unsupported
 utilisation and process-memory values are shown as `n/a`, not guessed.
 
+The viewer retains a per-representation benchmark after switching away from a
+mode. FPS and CPU frame interval are averaged over the time spent in that mode;
+GPU scene time uses asynchronous OpenGL timer queries tagged with the active
+representation so late query results are not attributed to the wrong mode.
+Press `B` to reset the averages. Tracked canopy allocations are retained for
+both variants (polygon vertex buffer versus impostor atlas textures and quad
+buffer), even though the inactive variant is released. Resource upload time is
+excluded from the next measurement window. Device/process VRAM remains a
+driver-wide/process-wide sample and can move due to unrelated GPU activity; use
+the tracked allocation comparison to isolate viewer resources.
+
 ## Runtime asset contents
 
 - `colour.png`: leaf (and optionally twig) colour and alpha coverage.
