@@ -175,7 +175,7 @@ class OpenGLViewer:
         self.frame_count = 0
         self.previous_frame_time = time.perf_counter()
         self.status_message = ""
-        self.last_selected_view = -1
+        self.last_selected_views: list[int] = []
 
         self.max_depth = 4
         self.camera_yaw = math.radians(38.0)
@@ -546,8 +546,9 @@ class OpenGLViewer:
         util = telemetry["utilization_percent"]
         memory_util = telemetry["memory_utilization_percent"]
         atlas_view = (
-            f"{self.last_selected_view + 1} / {len(self.canopy_renderer.views)}"
-            if self.canopy_renderer is not None and self.last_selected_view >= 0
+            ", ".join(str(index + 1) for index in self.last_selected_views)
+            + f" / {len(self.canopy_renderer.views)}"
+            if self.canopy_renderer is not None and self.last_selected_views
             else "n/a"
         )
         gpu_frame = f"{self.gpu_scene_ms:.2f} ms" if self.gpu_scene_ms is not None else "n/a"
@@ -879,9 +880,11 @@ class OpenGLViewer:
                         gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.canopy_vertex_count)
                     elif self.canopy_renderer is not None:
                         gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
-                        direction = self._camera_position() - self.canopy_renderer.centre
-                        self.last_selected_view = self.canopy_renderer.draw(
-                            view_projection, direction
+                        camera_position = self._camera_position()
+                        self.last_selected_views = self.canopy_renderer.draw(
+                            view_projection,
+                            camera_position,
+                            (framebuffer_width, framebuffer_height),
                         )
                 gl.glBindVertexArray(0)
                 gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
