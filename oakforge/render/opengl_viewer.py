@@ -443,10 +443,11 @@ class OpenGLViewer:
 
     def _stats_lines(self) -> list[str]:
         telemetry = self.gpu_telemetry.sample()
+        canopy_visible = self.show_leaves and self.max_depth >= 4
         active_canopy_triangles = (
             self.canopy_triangle_count if self.canopy_mode == "polygons"
             else (2 if self.canopy_renderer is not None else 0)
-        ) if self.show_leaves and self.max_depth >= 4 else 0
+        ) if canopy_visible else 0
         active_triangles = self.wood_triangle_count + active_canopy_triangles
         active_name = "DEPTH IMPOSTOR" if self.canopy_mode == "impostor" else "POLYGON LEAVES"
         allocated = sum(self.gpu_allocations.values())
@@ -461,25 +462,43 @@ class OpenGLViewer:
         gpu_frame = f"{self.gpu_scene_ms:.2f} ms" if self.gpu_scene_ms is not None else "n/a"
         frame_ms = f"{self.frame_ms:.2f} ms" if self.frame_ms > 0 else "n/a"
         fps = f"{self.fps:.1f}" if self.fps > 0 else "warming up"
+
+        polygon = self.representation_metrics["polygons"]
+        impostor = self.representation_metrics["impostor"]
+        polygon_bytes = int(polygon["gpu_bytes"] or 0)
+        impostor_bytes = int(impostor["gpu_bytes"] or 0)
+        allocation_delta = polygon_bytes - impostor_bytes
+        delta_text = (
+            f"{self._format_bytes(abs(allocation_delta))} less for impostor"
+            if allocation_delta >= 0
+            else f"{self._format_bytes(abs(allocation_delta))} more for impostor"
+        )
         lines = [
             "OAKFORGE | CANOPY REPRESENTATION BENCHMARK",
             f"Mode: {active_name}   [I] switch   [L] canopy on/off",
-            f"Model triangles: {self.model_total_triangles:,} total",
-            f"  Wood: {self.source_wood_triangles:,}   Leaf polygons: {self.model_leaf_triangles:,}",
+            f"Source model: {self.model_total_triangles:,} triangles (wood {self.source_wood_triangles:,} + leaves {self.model_leaf_triangles:,})",
             f"Active triangles: {active_triangles:,} (wood {self.wood_triangle_count:,} + canopy {active_canopy_triangles:,})",
-            f"OakForge GPU allocations: {self._format_bytes(allocated)} (tracked buffers/textures)",
-            f"Canopy allocation: {self._format_bytes(canopy_allocated)}",
+            f"Tracked viewer allocations: {self._format_bytes(allocated)}",
+            f"Active canopy allocation: {self._format_bytes(canopy_allocated)}",
+            f"Polygon canopy: {self.model_leaf_triangles:,} source tris | {self._format_bytes(polygon_bytes)} tracked GPU bytes",
+            f"Depth impostor: 2 quad tris | {self._format_bytes(impostor_bytes)} tracked GPU bytes",
+            f"Allocation delta: {delta_text}",
+            f"Polygon geometry: {int(polygon['vertices'] or 0):,} vertices / {int(polygon['triangles'] or 0):,} triangles",
+            f"Impostor geometry: {int(impostor['vertices'] or 0):,} vertices / {int(impostor['triangles'] or 0):,} triangles",
             f"Device VRAM: {self._format_bytes(used)} used / {self._format_bytes(total)} total",
             f"Process VRAM: {self._format_bytes(process)}   GPU load: {str(util) + '%' if util is not None else 'n/a'}",
             f"GPU memory controller: {str(memory_util) + '%' if memory_util is not None else 'n/a'}",
-            f"Performance: {fps} FPS   CPU frame: {frame_ms}   GPU scene: {gpu_frame}",
+            f"Current performance: {fps} FPS   CPU frame: {frame_ms}   GPU scene: {gpu_frame}",
+            f"Polygon average: {self._format_metric(polygon['fps'], ' FPS')}, {self._format_metric(polygon['frame_ms'], ' ms')} frame, {self._format_metric(polygon['gpu_ms'], ' ms')} GPU",
+            f"Impostor average: {self._format_metric(impostor['fps'], ' FPS')}, {self._format_metric(impostor['frame_ms'], ' ms')} frame, {self._format_metric(impostor['gpu_ms'], ' ms')} GPU",
             f"Telemetry: {telemetry['backend']}   Renderer: {telemetry['gpu_name']}",
             f"Atlas view: {self.last_selected_view + 1 if self.last_selected_view >= 0 else 'n/a'} / {len(self.canopy_renderer.views) if self.canopy_renderer else 'n/a'}",
-            "Keys: I representation | L canopy | 1-5 structure | W wireframe | V VSync | R regenerate",
+            "Keys: I representation | L canopy | 1-5 structure | W wireframe | V VSync | R regenerate | B reset averages",
         ]
         if self.status_message:
             lines.append(self.status_message)
         return lines
+
 
     def _create_overlay(self) -> None:
         gl = self.gl
