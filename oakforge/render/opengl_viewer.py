@@ -595,7 +595,7 @@ class OpenGLViewer:
             f"Telemetry: {telemetry['backend']}   Renderer: {telemetry['gpu_name']}",
             f"Atlas view: {atlas_view}",
             f"Impostor style: {appearance}",
-            "Appearance: C style | [/] noise | ,/. scale | -/= angularity | PgUp/Dn splat size",
+            "Appearance: C style | [/] noise | ,/. scale | -/= angularity | Z/X splat size",
             "Keys: I representation | L canopy | 1-5 structure | W wireframe | V VSync | R regenerate | B reset averages",
         ]
         if self.status_message:
@@ -740,7 +740,7 @@ class OpenGLViewer:
             glfw.KEY_LEFT_BRACKET, glfw.KEY_RIGHT_BRACKET,
             glfw.KEY_COMMA, glfw.KEY_PERIOD,
             glfw.KEY_MINUS, glfw.KEY_EQUAL,
-            glfw.KEY_PAGE_UP, glfw.KEY_PAGE_DOWN,
+            glfw.KEY_Z, glfw.KEY_X,
         }
         if action not in (glfw.PRESS, glfw.REPEAT):
             return
@@ -787,9 +787,9 @@ class OpenGLViewer:
                 self.status_message = f"Foliage angularity: {value:.2f}"
             else:
                 self.status_message = "Switch to the depth impostor with I to tune foliage shape"
-        elif key in (glfw.KEY_PAGE_DOWN, glfw.KEY_PAGE_UP):
+        elif key in (glfw.KEY_Z, glfw.KEY_X):
             if self.canopy_renderer is not None:
-                delta = -0.4 if key == glfw.KEY_PAGE_DOWN else 0.4
+                delta = -0.4 if key == glfw.KEY_Z else 0.4
                 value = self.canopy_renderer.adjust_splat_scale(delta)
                 self.status_message = f"Impostor footprint scale: {value:.1f}x"
             else:
@@ -873,7 +873,7 @@ class OpenGLViewer:
         print("  [ / ]                       : decrease / increase foliage edge-noise strength")
         print("  , / .                       : decrease / increase foliage noise scale")
         print("  - / =                       : decrease / increase angularity")
-        print("  PageUp / PageDown           : increase / decrease impostor footprint size")
+        print("  Z / X                       : decrease / increase impostor footprint size")
         print("  B                           : reset representation benchmark averages")
         print("  L                           : toggle canopy visibility")
         print("  1 / 2 / 3 / 4 / 5           : trunk / primary / secondary / tertiary / full tree")
