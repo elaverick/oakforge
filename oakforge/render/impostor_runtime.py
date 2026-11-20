@@ -287,6 +287,12 @@ class DepthImpostorRenderer:
             gl.glDeleteBuffers(1, [self.vbo])
             self.vbo = 0
         if self.textures:
+            # A deleted texture remains alive while bound to a texture unit.
+            # Unbind all atlas units so the memory comparison reflects release.
+            for unit in (0, 1, 2):
+                gl.glActiveTexture(gl.GL_TEXTURE0 + unit)
+                gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
+            gl.glActiveTexture(gl.GL_TEXTURE0)
             gl.glDeleteTextures(len(self.textures), list(self.textures.values()))
             self.textures.clear()
         if self.program:
