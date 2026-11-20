@@ -1,4 +1,4 @@
-"""Optional Xvfb-backed runtime test for layered, parallax-corrected impostors."""
+"""Optional Xvfb-backed runtime test for forward-projected depth splats."""
 
 import json
 import os
@@ -8,7 +8,6 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from oakforge.render.impostor import view_basis
 from oakforge.render.impostor_runtime import DepthImpostorRenderer
 
 
@@ -88,7 +87,7 @@ class RuntimeImpostorOpenGLTests(unittest.TestCase):
         self.assertGreater(int(np.unique(front_depth).size), 20)
         self.assertGreater(int(np.count_nonzero(front_depth != second_depth)), 100)
 
-    def test_runtime_uploads_layer_arrays_reprojects_and_blends_views(self):
+    def test_runtime_forward_projects_depth_layers_and_resolves_occlusion(self):
         asset_directory = Path("build/impostor")
         renderer = DepthImpostorRenderer(self.gl, asset_directory)
         try:
@@ -118,20 +117,22 @@ class RuntimeImpostorOpenGLTests(unittest.TestCase):
             ).reshape(128, 128)
             covered = np.any(pixels[:, :, :3] > 4, axis=2)
             covered_pixels = int(np.count_nonzero(covered))
-            self.assertEqual(len(selected_views), 3)
+            self.assertEqual(len(selected_views), 1)
+            self.assertEqual(selected_views[0], 0)
+            self.assertEqual(renderer.point_count, renderer.tile_size ** 2 * renderer.layer_count)
             self.assertGreater(covered_pixels, 10)
             self.assertTrue(np.all(depth_pixels[covered] < 1.0))
             self.assertEqual(self.gl.glGetError(), self.gl.GL_NO_ERROR)
 
-            # A camera moved off the capture direction must still render by
-            # reprojecting the layer samples, not by selecting a flat image.
-            side = view_basis(direction)[0]
-            second_camera = camera_position + side * (renderer.extent * 0.25)
+            # A displaced camera changes the forward projection while retaining
+            # one coherent source capture (no cross-view geometry averaging).
+            second_camera = camera_position + np.asarray([renderer.extent * 0.25, 0.0, 0.0])
             second_matrix = _perspective_view_projection(
                 second_camera, renderer.centre, aspect=1.0
             )
             self.gl.glClear(self.gl.GL_COLOR_BUFFER_BIT | self.gl.GL_DEPTH_BUFFER_BIT)
-            renderer.draw(second_matrix, second_camera, (128, 128))
+            second_selected = renderer.draw(second_matrix, second_camera, (128, 128))
+            self.assertEqual(len(second_selected), 1)
             self.gl.glFinish()
             second_pixels = np.frombuffer(
                 self.gl.glReadPixels(0, 0, 128, 128, self.gl.GL_RGBA, self.gl.GL_UNSIGNED_BYTE),
