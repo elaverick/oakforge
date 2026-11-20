@@ -131,6 +131,10 @@ class RuntimeImpostorOpenGLTests(unittest.TestCase):
             # Save these as CI artefacts so their silhouette differences can be
             # inspected without relying only on numeric assertions.
             pixels_by_style = {}
+            original_splat_scale = renderer.splat_scale
+            # The smoke framebuffer is deliberately small; temporarily enlarge
+            # point footprints so the different clipping modes are observable.
+            renderer.splat_scale = 2.6
             for style in IMPOSTOR_STYLES:
                 renderer.set_style(style)
                 self.gl.glClear(self.gl.GL_COLOR_BUFFER_BIT | self.gl.GL_DEPTH_BUFFER_BIT)
@@ -157,6 +161,7 @@ class RuntimeImpostorOpenGLTests(unittest.TestCase):
                 ))),
                 0,
             )
+            renderer.splat_scale = original_splat_scale
             renderer.set_style("foliage")
 
             # A displaced camera changes the forward projection while retaining
