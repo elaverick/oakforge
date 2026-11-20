@@ -126,7 +126,7 @@ def main() -> int:
     print(f"  Leaves   : {len(tree.leaves)}")
     print(f"  Groups   : {tree.metadata.get('branch_groups', {})}")
 
-    if arguments.stats:
+    if arguments.stats and not arguments.export_obj:
         return 0
 
     if arguments.export_obj or arguments.no_viewer:
