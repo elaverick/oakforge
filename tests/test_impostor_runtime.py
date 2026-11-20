@@ -65,6 +65,25 @@ class RuntimeImpostorMathTests(unittest.TestCase):
                 np.asarray([1.0, 0.0, 0.0]),
             )
 
+    def test_precomputed_spherical_capture_data_matches_dynamic_selection(self):
+        from oakforge.render.impostor import fibonacci_directions
+        from oakforge.render.impostor_runtime import _build_spherical_view_triangles
+
+        directions = fibonacci_directions(64).astype(np.float64)
+        directions /= np.linalg.norm(directions, axis=1, keepdims=True)
+        views = [{"direction": direction.tolist()} for direction in directions]
+        target = directions[11] * 0.4 + directions[39] * 0.6
+        target /= np.linalg.norm(target)
+
+        dynamic_indices, dynamic_weights = select_view_blend(views, target)
+        cached_triangles = _build_spherical_view_triangles(directions)
+        cached_indices, cached_weights = select_view_blend(
+            views, target, directions, cached_triangles
+        )
+
+        self.assertEqual(cached_indices, dynamic_indices)
+        np.testing.assert_allclose(cached_weights, dynamic_weights, atol=1e-9)
+
 
 if __name__ == "__main__":
     unittest.main()
