@@ -35,12 +35,17 @@ uniform vec3 capture_forward;
 uniform float canopy_extent;
 uniform float depth_near;
 uniform float depth_far;
+uniform float splat_scale;
 uniform int tile_size;
 uniform int layer_count;
 uniform int view_index;
 
 out vec3 surface_colour;
 out vec3 surface_normal;
+flat out vec3 sample_local_position;
+flat out vec3 sample_footprint_x;
+flat out vec3 sample_footprint_y;
+flat out vec3 sample_identity;
 
 vec3 reconstruct_pixel(ivec2 pixel, int slice_index) {
     float depth_value = texelFetch(
@@ -73,6 +78,10 @@ void main() {
         gl_PointSize = 0.0;
         surface_colour = vec3(0.0);
         surface_normal = vec3(0.0, 1.0, 0.0);
+        sample_local_position = vec3(0.0);
+        sample_footprint_x = vec3(0.0);
+        sample_footprint_y = vec3(0.0);
+        sample_identity = vec3(pixel, layer_index);
         return;
     }
 
@@ -83,6 +92,10 @@ void main() {
         gl_PointSize = 0.0;
         surface_colour = vec3(0.0);
         surface_normal = vec3(0.0, 1.0, 0.0);
+        sample_local_position = vec3(0.0);
+        sample_footprint_x = vec3(0.0);
+        sample_footprint_y = vec3(0.0);
+        sample_identity = vec3(pixel, layer_index);
         return;
     }
     gl_Position = clip_position;
@@ -90,6 +103,8 @@ void main() {
     surface_normal = normalize(
         texelFetch(normal_atlas, ivec3(pixel, slice_index), 0).rgb * 2.0 - 1.0
     );
+    sample_local_position = world_position - canopy_centre;
+    sample_identity = vec3(vec2(pixel), float(layer_index));
 
     // Estimate the projected footprint of this capture texel. At a grazing
     // angle, source pixels spread over more screen pixels; splatting that
@@ -118,6 +133,8 @@ void main() {
             + capture_up * (float(step_y) * canopy_extent / float(tile_size));
     }
 
+    sample_footprint_x = world_x - world_position;
+    sample_footprint_y = world_y - world_position;
     vec4 clip_x = view_projection * vec4(world_x, 1.0);
     vec4 clip_y = view_projection * vec4(world_y, 1.0);
     float footprint_x = 1.0;
@@ -134,7 +151,9 @@ void main() {
             * viewport_size * 0.5
         );
     }
-    gl_PointSize = clamp(max(footprint_x, footprint_y) * 1.15, 1.0, 3.0);
+    gl_PointSize = clamp(
+        max(footprint_x, footprint_y) * 1.15 * splat_scale, 1.0, 5.5
+    );
 }
 """
 
@@ -142,9 +161,90 @@ void main() {
 IMPOSTOR_FRAGMENT_SHADER = """#version 330 core
 in vec3 surface_colour;
 in vec3 surface_normal;
+flat in vec3 sample_local_position;
+flat in vec3 sample_footprint_x;
+flat in vec3 sample_footprint_y;
+flat in vec3 sample_identity;
+
+uniform int shape_mode;
+uniform int polygon_sides;
+uniform float angularity;
+uniform float noise_intensity;
+uniform float noise_scale;
+
 out vec4 fragment_colour;
 
+float hash12(vec2 point) {
+    vec3 value = fract(vec3(point.xyx) * 0.1031);
+    value += dot(value, value.yzx + 33.33);
+    return fract((value.x + value.y) * value.z);
+}
+
+float value_noise(vec2 point) {
+    vec2 cell = floor(point);
+    vec2 local = fract(point);
+    local = local * local * (3.0 - 2.0 * local);
+    float lower = mix(
+        hash12(cell),
+        hash12(cell + vec2(1.0, 0.0)),
+        local.x
+    );
+    float upper = mix(
+        hash12(cell + vec2(0.0, 1.0)),
+        hash12(cell + vec2(1.0, 1.0)),
+        local.x
+    );
+    return mix(lower, upper, local.y);
+}
+
 void main() {
+    vec2 point = (gl_PointCoord - vec2(0.5)) * 2.0;
+    float radius = length(point);
+
+    // The square mode is the original point-splat renderer. Round and angular
+    // modes shape the footprint; foliage mode additionally breaks up its edge
+    // with object-space noise. None of these modes changes reconstructed depth.
+    if (shape_mode == 1) {
+        if (radius > 1.0) discard;
+    } else if (shape_mode >= 2) {
+        int side_offset = int(floor(
+            hash12(sample_identity.xy + vec2(sample_identity.z * 3.1, 7.7)) * 3.0
+        )) - 1;
+        int sides = clamp(polygon_sides + side_offset, 4, 10);
+        float sector = 6.28318530718 / float(sides);
+        float angle = atan(point.y, point.x)
+            + hash12(sample_identity.xy + vec2(19.1, sample_identity.z)) * 6.28318530718;
+        float sector_angle = mod(angle + sector * 0.5, sector) - sector * 0.5;
+        float polygon_limit = cos(sector * 0.5) / max(cos(sector_angle), 0.1);
+
+        float wave_a = sin(angle * 3.0 + sample_identity.x * 0.071);
+        float wave_b = sin(angle * 5.0 + sample_identity.y * 0.053
+            + sample_identity.z * 1.7);
+        float irregularity = angularity * (0.09 * wave_a + 0.045 * wave_b);
+        polygon_limit *= 1.0 + irregularity;
+
+        if (shape_mode == 3 && noise_intensity > 0.001) {
+            vec3 local_position = sample_local_position
+                + (gl_PointCoord.x - 0.5) * sample_footprint_x
+                + (gl_PointCoord.y - 0.5) * sample_footprint_y;
+            // An oblique 2-D projection of canopy-local XYZ keeps the pattern
+            // attached to the tree while avoiding screen-space crawling.
+            vec2 noise_position = vec2(
+                dot(local_position, vec3(1.0, 0.31, 0.17)),
+                dot(local_position, vec3(-0.23, 0.41, 1.0))
+            );
+            float broad_noise = value_noise(noise_position * noise_scale);
+            float fine_noise = value_noise(
+                noise_position * noise_scale * 2.35 + vec2(17.0, 9.0)
+            );
+            float foliage_noise = mix(broad_noise, fine_noise, 0.32);
+            polygon_limit *= 1.0
+                + (foliage_noise - 0.5) * noise_intensity * 0.72;
+        }
+
+        if (radius > polygon_limit) discard;
+    }
+
     vec3 normal_direction = normalize(surface_normal);
     vec3 light_direction = normalize(vec3(-0.45, 0.82, 0.36));
     float diffuse_amount = max(dot(normal_direction, light_direction), 0.0);
@@ -154,6 +254,9 @@ void main() {
     fragment_colour = vec4(shaded_colour, 1.0);
 }
 """
+
+
+IMPOSTOR_STYLES = ("square", "round", "angular", "foliage")
 
 
 def nearest_view_index(views: list[dict[str, Any]], direction: np.ndarray) -> int:
@@ -210,6 +313,12 @@ class DepthImpostorRenderer:
 
     def __init__(self, gl, asset_directory: str | Path) -> None:
         self.gl = gl
+        self.style = "foliage"
+        self.angularity = 0.65
+        self.noise_intensity = 0.6
+        self.noise_scale = 8.0
+        self.polygon_sides = 6
+        self.splat_scale = 1.3
         self.asset_directory = Path(asset_directory)
         manifest_path = self.asset_directory / "manifest.json"
         if not manifest_path.is_file():
@@ -270,7 +379,8 @@ class DepthImpostorRenderer:
             "view_projection", "viewport_size", "canopy_centre",
             "capture_right", "capture_up", "capture_forward",
             "canopy_extent", "depth_near", "depth_far",
-            "tile_size", "layer_count", "view_index",
+            "tile_size", "layer_count", "view_index", "splat_scale", "shape_mode", "polygon_sides",
+            "angularity", "noise_intensity", "noise_scale",
         )
         self.uniforms = {
             name: int(gl.glGetUniformLocation(self.program, name))
@@ -287,6 +397,24 @@ class DepthImpostorRenderer:
         self.point_count = self.tile_size * self.tile_size * self.layer_count
         self._upload_texture_arrays()
         self._create_vertex_array()
+
+    def set_style(self, style: str) -> None:
+        """Select square, round, angular, or noise-broken foliage splats."""
+        if style not in IMPOSTOR_STYLES:
+            raise ValueError(f"Unknown impostor foliage style: {style}")
+        self.style = style
+
+    def adjust_noise_intensity(self, delta: float) -> float:
+        self.noise_intensity = float(np.clip(self.noise_intensity + delta, 0.0, 1.0))
+        return self.noise_intensity
+
+    def adjust_noise_scale(self, delta: float) -> float:
+        self.noise_scale = float(np.clip(self.noise_scale + delta, 0.5, 32.0))
+        return self.noise_scale
+
+    def adjust_angularity(self, delta: float) -> float:
+        self.angularity = float(np.clip(self.angularity + delta, 0.0, 1.0))
+        return self.angularity
 
     def _load_array_slices(self, filenames: list[str], mode: str) -> np.ndarray:
         try:
@@ -399,6 +527,12 @@ class DepthImpostorRenderer:
         gl.glUniform1f(self.uniforms["depth_near"], self.near)
         gl.glUniform1f(self.uniforms["depth_far"], self.far)
         gl.glUniform1i(self.uniforms["view_index"], view_index)
+        gl.glUniform1f(self.uniforms["splat_scale"], self.splat_scale)
+        gl.glUniform1i(self.uniforms["shape_mode"], IMPOSTOR_STYLES.index(self.style))
+        gl.glUniform1i(self.uniforms["polygon_sides"], self.polygon_sides)
+        gl.glUniform1f(self.uniforms["angularity"], self.angularity)
+        gl.glUniform1f(self.uniforms["noise_intensity"], self.noise_intensity)
+        gl.glUniform1f(self.uniforms["noise_scale"], self.noise_scale)
 
         for unit, name in enumerate(("colour", "normal", "depth")):
             gl.glActiveTexture(gl.GL_TEXTURE0 + unit)
