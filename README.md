@@ -215,7 +215,7 @@ The tests cover the full hierarchical oak structure, parent relationships, upper
 
 ## Current scope and limitations
 
-This is a structural vegetation generator, not a clone of the complete SpeedTree product. It currently has deterministic seeded variation, a five-level structural hierarchy, a fused coarse-wood surface, buttress roots, lobed oak-leaf polygons and an inspection viewer. It does not yet implement collision-aware growth, spatial pruning volumes, artist editing handles, bark UVs, detailed bark materials, seasonal leaf states, wind animation, impostors or automatic LOD generation. The modular tool graph is intended to make those systems additive rather than requiring a rewrite of the recipe engine.
+This is a structural vegetation generator, not a clone of the complete SpeedTree product. It currently has deterministic seeded variation, a five-level structural hierarchy, a fused coarse-wood surface, buttress roots, lobed oak-leaf polygons and an inspection viewer. It does not yet implement collision-aware growth, spatial pruning volumes, artist editing handles, bark UVs, detailed bark materials, seasonal leaf states, wind animation or automatic multi-tier polygon LOD generation. The canopy impostor path is currently an experimental viewer comparison rather than a production-ready game renderer. The modular tool graph is intended to make those systems additive rather than requiring a rewrite of the recipe engine.
 
 ## Trunk development
 
