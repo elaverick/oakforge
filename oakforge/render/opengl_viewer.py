@@ -139,7 +139,7 @@ class OpenGLViewer:
         self.representation_metrics: dict[str, dict[str, float | int | None]] = {
             "polygons": {"triangles": 0, "vertices": 0, "gpu_bytes": 0,
                          "fps": None, "frame_ms": None, "gpu_ms": None},
-            "impostor": {"triangles": 2, "vertices": 6, "gpu_bytes": 0,
+            "impostor": {"triangles": 0, "vertices": 0, "gpu_bytes": 0,
                          "fps": None, "frame_ms": None, "gpu_ms": None},
         }
         self.mode_sample_frames = 0
@@ -393,8 +393,8 @@ class OpenGLViewer:
             self.canopy_renderer = renderer
             self.gpu_allocations["canopy_impostor"] = renderer.allocated_bytes
             self.representation_metrics["impostor"].update({
-                "triangles": 2,
-                "vertices": 6,
+                "triangles": 0,
+                "vertices": renderer.point_count,
                 "gpu_bytes": renderer.allocated_bytes,
             })
 
@@ -532,7 +532,7 @@ class OpenGLViewer:
         canopy_visible = self.show_leaves and self.max_depth >= 4
         active_canopy_triangles = (
             self.canopy_triangle_count if self.canopy_mode == "polygons"
-            else (2 if self.canopy_renderer is not None else 0)
+            else 0
         ) if canopy_visible else 0
         active_triangles = self.wood_triangle_count + active_canopy_triangles
         active_name = "DEPTH IMPOSTOR" if self.canopy_mode == "impostor" else "POLYGON LEAVES"
@@ -573,10 +573,10 @@ class OpenGLViewer:
             f"Tracked viewer allocations: {self._format_bytes(allocated)}",
             f"Active canopy allocation: {self._format_bytes(canopy_allocated)}",
             f"Polygon canopy: {self.model_leaf_triangles:,} source tris | {self._format_bytes(polygon_bytes)} tracked GPU bytes",
-            f"Depth impostor: 2 quad tris | {self._format_bytes(impostor_bytes)} tracked GPU bytes",
+            f"Depth impostor: {int(impostor['vertices'] or 0):,} depth-tested point samples | {self._format_bytes(impostor_bytes)} tracked GPU bytes",
             f"Allocation delta: {delta_text}",
             f"Polygon geometry: {int(polygon['vertices'] or 0):,} vertices / {int(polygon['triangles'] or 0):,} triangles",
-            f"Impostor geometry: {int(impostor['vertices'] or 0):,} vertices / {int(impostor['triangles'] or 0):,} triangles",
+            f"Impostor geometry: {int(impostor['vertices'] or 0):,} point samples / 0 triangles",
             f"Device VRAM: {self._format_bytes(used)} used / {self._format_bytes(total)} total",
             f"Process VRAM: {self._format_bytes(process)}   GPU load: {str(util) + '%' if util is not None else 'n/a'}",
             f"GPU memory controller: {str(memory_util) + '%' if memory_util is not None else 'n/a'}",
