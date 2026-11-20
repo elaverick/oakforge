@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feature/depth-impostor-lod
+      - feature/impostor-benchmark-v2
   pull_request:
     branches:
       - main
