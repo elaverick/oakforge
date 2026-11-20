@@ -70,11 +70,13 @@ def _is_valid_impostor_cache(
         settings = manifest["settings"]
         textures = manifest["textures"]
         return (
-            manifest.get("format") == "oakforge-canopy-depth-impostor-v1"
+            manifest.get("format") == "oakforge-canopy-depth-impostor-v2"
             and manifest.get("tree_seed") == seed
             and manifest.get("source_geometry", {}).get("leaf_count") == leaf_count
             and settings.get("views") == views
             and settings.get("tile_size") == tile_size
+            and settings.get("include_twigs") is False
+            and isinstance(manifest.get("depth_projection"), dict)
             and all((directory / textures[name]).is_file()
                     for name in ("colour", "normal", "depth"))
         )
