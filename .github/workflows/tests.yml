@@ -28,6 +28,8 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Bake English oak depth impostor
         run: xvfb-run -a python -m oakforge.render.impostor --config configs/english_oak.yaml --output build/impostor
+      - name: Smoke-test runtime depth-impostor shader
+        run: xvfb-run -a env OAKFORGE_GL_SMOKE=1 python tests/test_impostor_runtime_gl.py
       - name: Bake matched high-resolution canopy comparison
         run: |
           xvfb-run -a python -m oakforge.render.impostor --config configs/english_oak.yaml --output build/comparison/leaves-only --views 8 --tile-size 512 --columns 8
