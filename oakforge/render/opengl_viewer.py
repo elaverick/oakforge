@@ -309,7 +309,7 @@ class OpenGLViewer:
             self.canopy_triangle_count = 0
             self.gpu_allocations["canopy_vbo"] = 0
             return
-        mesh = build_foliage_mesh(self._visible_tree())
+        mesh = build_foliage_mesh(self._visible_tree(include_leaves=True))
         self.canopy_vertex_count, _ = self._upload_vertex_data(
             self.canopy_vao, self.canopy_vbo, mesh, "canopy_vbo"
         )
