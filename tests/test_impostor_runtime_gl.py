@@ -62,8 +62,18 @@ class RuntimeImpostorOpenGLTests(unittest.TestCase):
                 dtype=np.uint8,
             ).reshape(64, 64, 4)
             covered_pixels = int(np.count_nonzero(np.any(pixels[:, :, :3] > 4, axis=2)))
+            depth_pixels = np.frombuffer(
+                self.gl.glReadPixels(0, 0, 64, 64, self.gl.GL_DEPTH_COMPONENT, self.gl.GL_FLOAT),
+                dtype=np.float32,
+            ).reshape(64, 64)
+            covered = np.any(pixels[:, :, :3] > 4, axis=2)
+            median_depth = float(np.median(depth_pixels[covered])) if np.any(covered) else 1.0
             self.assertEqual(view_index, 0)
             self.assertGreater(covered_pixels, 10)
+            # Captured canopy should reconstruct around the middle of the
+            # orthographic near/far range, not clamp to the quad's far plane.
+            self.assertGreater(median_depth, 0.25)
+            self.assertLess(median_depth, 0.75)
             self.assertEqual(self.gl.glGetError(), self.gl.GL_NO_ERROR)
             self.assertGreater(renderer.allocated_bytes, 0)
         finally:
