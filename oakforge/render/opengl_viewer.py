@@ -124,9 +124,9 @@ class OpenGLViewer:
         }
         self.mode_sample_frames = 0
         self.mode_sample_seconds = 0.0
-        self.mode_gpu_samples: list[tuple[int, float]] = []
         self.mode_sample_start = time.perf_counter()
         self.mode_sample_generation = 0
+        self.mode_gpu_samples: list[tuple[int, float]] = []
         self.canopy_mode = "polygons"
         self.canopy_renderer: DepthImpostorRenderer | None = None
         self.show_leaves = True
@@ -435,6 +435,7 @@ class OpenGLViewer:
         except Exception:
             self.gpu_queries = []
             self.gpu_query_pending = []
+            self.gpu_query_generation = []
 
     def _poll_gpu_queries(self) -> None:
         gl = self.gl
