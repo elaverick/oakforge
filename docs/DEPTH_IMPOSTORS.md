@@ -90,6 +90,17 @@ The NVIDIA telemetry is supplied by `nvidia-ml-py` (installed from
 device-wide total/free VRAM from `GL_NVX_gpu_memory_info`. Unsupported
 utilisation and process-memory values are shown as `n/a`, not guessed.
 
+The live panel also retains a per-representation benchmark after switching away
+from that mode. Each reading is the average over the time spent in that mode
+since the previous switch: FPS and CPU frame interval use wall-clock frame
+timings, while GPU scene time uses asynchronous OpenGL timer queries. Press
+`B` to clear the performance averages and start a fresh comparison. Tracked
+canopy allocation is retained for both variants (polygon vertex buffer versus
+impostor atlas textures and quad buffer), even though the inactive variant is
+released. Device/process VRAM remains a driver-wide/process-wide sample and
+can move due to unrelated desktop or GPU activity; use the OakForge tracked
+allocation to isolate the actual representation resource difference.
+
 ## Runtime asset contents
 
 - `colour.png`: leaf (and optionally twig) colour and alpha coverage.
