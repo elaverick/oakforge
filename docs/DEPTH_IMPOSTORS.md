@@ -108,13 +108,17 @@ crawling of animated noise. The base colour and depth atlas data are unchanged.
 Live controls (available while the depth impostor is active):
 
 - **C** cycles square, round, angular and foliage styles.
-- **[ / ]** decrease or increase edge-noise strength.
-- **, / .** decrease or increase the noise scale.
-- **- / =** decrease or increase angularity.
+- **[ / ]** decrease or increase edge-noise strength (0 to 2.5).
+- **, / .** decrease or increase noise scale (1 to 80).
+- **- / =** decrease or increase angularity (rounder to more faceted).
+- **PageDown / PageUp** decrease or increase the projected splat footprint.
 
-The default is foliage style with moderate angularity and noise. The controls
-are clamped to safe ranges; switch back to square at any time for a direct
-comparison. Noise evaluation is only performed in foliage style.
+The default is foliage style with a larger projected footprint, stronger
+multi-scale edge noise and high angularity. These defaults are deliberately
+more visible at normal canopy viewing distances; the original square mode
+remains available as a baseline. Hold a tuning key to repeat adjustments.
+These controls only affect the depth-impostor representation, not polygon mode.
+Noise evaluation is only performed in foliage style.
 
 Quality controls:
 
