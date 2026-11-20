@@ -147,6 +147,7 @@ class OpenGLViewer:
         self.gpu_allocations: dict[str, int] = {}
         self.gpu_queries: list[int] = []
         self.gpu_query_pending: list[bool] = []
+        self.gpu_query_generation: list[int] = []
         self.gpu_query_write_index = 0
         self.gpu_query_active: int | None = None
         self.gpu_scene_ms: float | None = None
@@ -346,6 +347,12 @@ class OpenGLViewer:
             raise ValueError(f"Unknown canopy representation: {mode}")
         if mode != self.canopy_mode:
             self._finish_mode_sample()
+        else:
+            # A re-upload caused by changing hierarchy depth or visibility is
+            # not a representation switch. Close the current sampling window.
+            self.mode_sample_frames = 0
+            self.mode_sample_seconds = 0.0
+            self.mode_gpu_samples = []
         self._release_canopy_representation()
         self.canopy_mode = mode
         if not self.show_leaves or self.max_depth < 4:
@@ -420,6 +427,7 @@ class OpenGLViewer:
             else:
                 self.gpu_queries = [int(query) for query in generated]
             self.gpu_query_pending = [False] * len(self.gpu_queries)
+            self.gpu_query_generation = [0] * len(self.gpu_queries)
         except Exception:
             self.gpu_queries = []
             self.gpu_query_pending = []
@@ -434,13 +442,17 @@ class OpenGLViewer:
                 if available:
                     nanoseconds = gl.glGetQueryObjectui64v(query, gl.GL_QUERY_RESULT)
                     self.gpu_scene_ms = float(nanoseconds) / 1_000_000.0
-                    self.mode_gpu_samples.append(self.gpu_scene_ms)
-                    if len(self.mode_gpu_samples) > 120:
-                        self.mode_gpu_samples.pop(0)
+                    # Query results are asynchronous. A query submitted before
+                    # the last switch belongs to the previous representation.
+                    if self.gpu_query_generation[index] == self.mode_sample_generation:
+                        self.mode_gpu_samples.append(self.gpu_scene_ms)
+                        if len(self.mode_gpu_samples) > 120:
+                            self.mode_gpu_samples.pop(0)
                     self.gpu_query_pending[index] = False
             except Exception:
                 self.gpu_queries = []
                 self.gpu_query_pending = []
+                self.gpu_query_generation = []
                 self.gpu_scene_ms = None
                 return
 
@@ -452,6 +464,7 @@ class OpenGLViewer:
             return
         try:
             self.gl.glBeginQuery(self.gl.GL_TIME_ELAPSED, self.gpu_queries[index])
+            self.gpu_query_generation[index] = self.mode_sample_generation
             self.gpu_query_active = index
         except Exception:
             self.gpu_queries = []
