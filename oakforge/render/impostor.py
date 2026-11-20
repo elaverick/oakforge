@@ -193,7 +193,7 @@ def bake_depth_impostor(tree, output_directory: str | Path,
     normals = np.asarray(mesh.normals, dtype=np.float32).reshape(-1, 3)
     colours = np.asarray(mesh.colours, dtype=np.float32).reshape(-1, 3)
     if not len(positions):
-        raise ValueError("Cannot bake an empty tree mesh")
+        raise ValueError("Cannot bake an empty canopy mesh")
 
     bounds_min = positions.min(axis=0)
     bounds_max = positions.max(axis=0)
@@ -349,7 +349,7 @@ def bake_depth_impostor(tree, output_directory: str | Path,
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Bake a game-ready multi-view depth impostor for an OakForge tree")
+    parser = argparse.ArgumentParser(description="Bake a game-ready multi-view depth impostor for an OakForge canopy")
     parser.add_argument("--config", default="configs/english_oak.yaml")
     parser.add_argument("--output", default="build/impostor")
     parser.add_argument("--views", type=int, default=64)
@@ -369,7 +369,7 @@ def main() -> int:
         ),
     )
     print(f"Baked {len(manifest['views'])} views to {Path(args.output).resolve()}")
-    print(f"Runtime representation: {manifest['runtime_geometry']['triangles']} triangles")
+    print(f"Runtime canopy representation: {manifest['runtime_geometry']['triangles']} triangles")
     return 0
 
 
