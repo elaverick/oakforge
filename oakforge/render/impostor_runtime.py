@@ -147,6 +147,21 @@ class DepthImpostorRenderer:
         self.far = float(depth_projection["far"])
         self.views = self.manifest["views"]
         self.program = _compile_program(gl, IMPOSTOR_VERTEX_SHADER, IMPOSTOR_FRAGMENT_SHADER)
+        uniform_names = (
+            "view_projection", "canopy_centre", "view_right", "view_up",
+            "view_forward", "canopy_extent", "depth_near", "depth_far",
+            "atlas_rect", "colour_atlas", "normal_atlas", "depth_atlas",
+        )
+        self.uniforms = {
+            name: int(gl.glGetUniformLocation(self.program, name))
+            for name in uniform_names
+        }
+        missing_uniforms = [name for name, location in self.uniforms.items() if location < 0]
+        if missing_uniforms:
+            gl.glDeleteProgram(self.program)
+            raise RuntimeError(
+                "Canopy impostor shader is missing uniforms: " + ", ".join(missing_uniforms)
+            )
         self.textures: dict[str, int] = {}
         self.texture_bytes = 0
         self.vao = 0
@@ -227,17 +242,17 @@ class DepthImpostorRenderer:
 
         gl.glUseProgram(self.program)
         gl.glUniformMatrix4fv(
-            gl.glGetUniformLocation(self.program, "view_projection"), 1, gl.GL_TRUE, view_projection
+            self.uniforms["view_projection"], 1, gl.GL_TRUE, view_projection
         )
-        gl.glUniform3f(gl.glGetUniformLocation(self.program, "canopy_centre"), *self.centre)
-        gl.glUniform3f(gl.glGetUniformLocation(self.program, "view_right"), *right)
-        gl.glUniform3f(gl.glGetUniformLocation(self.program, "view_up"), *up)
-        gl.glUniform3f(gl.glGetUniformLocation(self.program, "view_forward"), *forward)
-        gl.glUniform1f(gl.glGetUniformLocation(self.program, "canopy_extent"), self.extent)
-        gl.glUniform1f(gl.glGetUniformLocation(self.program, "depth_near"), self.near)
-        gl.glUniform1f(gl.glGetUniformLocation(self.program, "depth_far"), self.far)
+        gl.glUniform3f(self.uniforms["canopy_centre"], *self.centre)
+        gl.glUniform3f(self.uniforms["view_right"], *right)
+        gl.glUniform3f(self.uniforms["view_up"], *up)
+        gl.glUniform3f(self.uniforms["view_forward"], *forward)
+        gl.glUniform1f(self.uniforms["canopy_extent"], self.extent)
+        gl.glUniform1f(self.uniforms["depth_near"], self.near)
+        gl.glUniform1f(self.uniforms["depth_far"], self.far)
         gl.glUniform4f(
-            gl.glGetUniformLocation(self.program, "atlas_rect"),
+            self.uniforms["atlas_rect"],
             float(rect_x), rect_y_bottom, float(rect_width), float(rect_height),
         )
         for unit, name, uniform_name in (
@@ -247,7 +262,6 @@ class DepthImpostorRenderer:
         ):
             gl.glActiveTexture(gl.GL_TEXTURE0 + unit)
             gl.glBindTexture(gl.GL_TEXTURE_2D, self.textures[name])
-            gl.glUniform1i(gl.glGetUniformLocation(self.program, uniform_name), unit)
         gl.glBindVertexArray(self.vao)
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
         gl.glBindVertexArray(0)
