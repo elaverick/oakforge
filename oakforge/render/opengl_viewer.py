@@ -764,7 +764,7 @@ class OpenGLViewer:
             self.representation_metrics = {
                 "polygons": {"triangles": 0, "vertices": 0, "gpu_bytes": 0,
                              "fps": None, "frame_ms": None, "gpu_ms": None},
-                "impostor": {"triangles": 2, "vertices": 6, "gpu_bytes": 0,
+                "impostor": {"triangles": 0, "vertices": 0, "gpu_bytes": 0,
                              "fps": None, "frame_ms": None, "gpu_ms": None},
             }
             self._set_canopy_mode(previous_mode)
