@@ -223,7 +223,9 @@ void main() {
         )) - 1;
         // Angularity is a genuine shape control: zero approaches a round
         // 14-sided footprint, one produces sharply faceted 4-sided clusters.
-        float desired_sides = mix(14.0, 4.0, angularity);
+        float round_sides = float(polygon_sides * 2 + 2);
+        float sharp_sides = max(float(polygon_sides - 2), 4.0);
+        float desired_sides = mix(round_sides, sharp_sides, angularity);
         int sides = clamp(
             int(floor(desired_sides + 0.5)) + side_offset, 4, 16
         );
