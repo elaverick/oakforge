@@ -115,6 +115,9 @@ class RuntimeImpostorOpenGLTests(unittest.TestCase):
                                      self.gl.GL_DEPTH_COMPONENT, self.gl.GL_FLOAT),
                 dtype=np.float32,
             ).reshape(128, 128)
+            Image.fromarray(pixels, mode="RGBA").save(
+                Path("build/impostor-forward-splat-capture.png")
+            )
             covered = np.any(pixels[:, :, :3] > 4, axis=2)
             covered_pixels = int(np.count_nonzero(covered))
             self.assertEqual(len(selected_views), 1)
@@ -138,6 +141,9 @@ class RuntimeImpostorOpenGLTests(unittest.TestCase):
                 self.gl.glReadPixels(0, 0, 128, 128, self.gl.GL_RGBA, self.gl.GL_UNSIGNED_BYTE),
                 dtype=np.uint8,
             ).reshape(128, 128, 4)
+            Image.fromarray(second_pixels, mode="RGBA").save(
+                Path("build/impostor-forward-splat-oblique.png")
+            )
             second_covered = np.any(second_pixels[:, :, :3] > 4, axis=2)
             self.assertGreater(int(np.count_nonzero(second_covered)), 10)
             changed_pixels = int(np.count_nonzero(np.logical_xor(covered, second_covered)))
