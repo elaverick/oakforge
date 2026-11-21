@@ -113,15 +113,18 @@ def build_cluster_leaves(
     return leaves
 
 
-def generate_coarse_tree(recipe_path: str | Path) -> TreeModel:
+def generate_coarse_tree(recipe_path: str | Path, seed_override: int | None = None) -> TreeModel:
     """Generate a quick scaffold tree without fine twigs, sprays or leaf work.
 
     The recipe's first growth loop is limited to its secondary branching pass.
     Its original seed and botanical parameters are retained.
     """
     recipe = load_recipe(recipe_path)
+    if seed_override is not None:
+        recipe["tree"]["seed"] = int(seed_override)
+    source_pipeline = recipe["pipeline"]
     recipe["pipeline"] = []
-    for action in load_recipe(recipe_path)["pipeline"]:
+    for action in source_pipeline:
         if "while" in action:
             progressive_action = dict(action["while"])
             progressive_action["condition"] = {"lt": ["$growth_level", 2]}
@@ -203,8 +206,9 @@ def build_lod_representation(tree: TreeModel, level: int) -> ProgressiveLOD:
 class ProgressiveTreeWorker:
     """Generate the complete tree and publish successively finer CPU LODs."""
 
-    def __init__(self, recipe_path: str | Path) -> None:
+    def __init__(self, recipe_path: str | Path, seed_override: int | None = None) -> None:
         self.recipe_path = Path(recipe_path)
+        self.seed_override = seed_override
         self._queue: Queue[ProgressiveLOD | BaseException | None] = Queue(maxsize=1)
         self._stop = Event()
         self._thread = Thread(target=self._run, name="OakForgeTreeGeneration", daemon=True)
@@ -221,7 +225,10 @@ class ProgressiveTreeWorker:
 
     def _run(self) -> None:
         try:
-            tree = generate_from_file(self.recipe_path)
+            recipe = load_recipe(self.recipe_path)
+            if self.seed_override is not None:
+                recipe["tree"]["seed"] = int(self.seed_override)
+            tree = generate_tree(recipe)
             for level in (2, 1, 0):
                 if self._stop.is_set():
                     return
