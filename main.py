@@ -13,6 +13,11 @@ from oakforge.core.mesh import build_tree_mesh, write_obj
 from oakforge.generation import generate_from_file, generate_tree, load_recipe
 from oakforge.render.impostor import ImpostorSettings, bake_depth_impostor
 from oakforge.render.opengl_viewer import OpenGLViewer
+from oakforge.progressive import (
+    ProgressiveTreeWorker,
+    build_lod_representation,
+    generate_coarse_tree,
+)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -35,6 +40,10 @@ def parse_arguments() -> argparse.Namespace:
     argument_parser.add_argument(
         "--no-viewer", action="store_true",
         help="Generate and report the tree without starting the interactive viewer.",
+    )
+    argument_parser.add_argument(
+        "--legacy-impostor-viewer", action="store_true",
+        help="Use the original fully baked canopy-impostor comparison workflow.",
     )
     argument_parser.add_argument(
         "--impostor-views", type=int, default=64,
@@ -124,22 +133,21 @@ def _ensure_impostor_cache(
 
 
 def main() -> int:
-    """Generate a tree, then export it or open the comparison viewer."""
+    """Run a progressive viewer, or the explicit offline/legacy workflows."""
     arguments = parse_arguments()
     recipe_path = Path(arguments.config)
     if not recipe_path.is_file():
         raise FileNotFoundError(f"Recipe not found: {recipe_path}")
 
-    tree = generate_from_file(recipe_path)
-    print(f"Generated: {tree.name} ({tree.metadata.get('species', 'unknown species')})")
-    print(f"  Branches : {len(tree.branches)}")
-    print(f"  Leaves   : {len(tree.leaves)}")
-    print(f"  Groups   : {tree.metadata.get('branch_groups', {})}")
-
-    if arguments.stats and not arguments.export_obj:
-        return 0
-
-    if arguments.export_obj or arguments.no_viewer:
+    # Offline inspection and export retain the complete deterministic recipe.
+    if arguments.stats or arguments.export_obj or arguments.no_viewer:
+        tree = generate_from_file(recipe_path)
+        print(f"Generated: {tree.name} ({tree.metadata.get('species', 'unknown species')})")
+        print(f"  Branches : {len(tree.branches)}")
+        print(f"  Leaves   : {len(tree.leaves)}")
+        print(f"  Groups   : {tree.metadata.get('branch_groups', {})}")
+        if arguments.stats and not arguments.export_obj:
+            return 0
         mesh = build_tree_mesh(tree)
         print(f"  Triangles: {mesh.triangle_count:,}")
         if arguments.export_obj:
@@ -148,6 +156,44 @@ def main() -> int:
             write_obj(mesh, str(export_path))
             print(f"OBJ exported to: {export_path.resolve()}")
         return 0
+
+    if not arguments.legacy_impostor_viewer:
+        # A coarse scaffold with branch-anchored leaf clusters is ready before
+        # the full recipe and its detailed foliage are constructed.
+        coarse_tree = generate_coarse_tree(recipe_path)
+        initial_lod = build_lod_representation(coarse_tree, 3)
+        generation_seed = int(coarse_tree.metadata.get("seed", 1))
+        worker = ProgressiveTreeWorker(recipe_path, seed_override=generation_seed)
+        print(
+            f"Initial tree ready: LOD3, {len(coarse_tree.branches):,} branches, "
+            f"{len(coarse_tree.leaves):,} clustered leaves"
+        )
+        print("Building LOD2, LOD1 and LOD0 in the background; the viewer remains responsive.")
+
+        def regenerate_tree():
+            nonlocal generation_seed
+            generation_seed += 1
+            return generate_coarse_tree(recipe_path, seed_override=generation_seed)
+
+        try:
+            OpenGLViewer(
+                coarse_tree,
+                regenerate_tree,
+                Path("build") / "progressive",
+                progressive_worker=worker,
+                initial_lod=initial_lod,
+            ).run()
+        finally:
+            worker.close(timeout=0.5)
+        return 0
+
+    # Legacy explicit path: bake the complete canopy before opening the
+    # polygon-versus-depth-impostor A/B viewer.
+    tree = generate_from_file(recipe_path)
+    print(f"Generated: {tree.name} ({tree.metadata.get('species', 'unknown species')})")
+    print(f"  Branches : {len(tree.branches)}")
+    print(f"  Leaves   : {len(tree.leaves)}")
+    print(f"  Groups   : {tree.metadata.get('branch_groups', {})}")
 
     if arguments.impostor_views < 8:
         raise ValueError("--impostor-views must be at least 8")
@@ -162,7 +208,7 @@ def main() -> int:
     )
     generation_seed = int(tree.metadata.get("seed", 1))
 
-    def regenerate_tree():
+    def regenerate_legacy_tree():
         nonlocal generation_seed
         generation_seed += 1
         recipe = load_recipe(recipe_path)
@@ -197,12 +243,11 @@ def main() -> int:
 
     OpenGLViewer(
         tree,
-        regenerate_tree,
+        regenerate_legacy_tree,
         impostor_directory,
         rebake_callback=rebake_impostor,
     ).run()
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
