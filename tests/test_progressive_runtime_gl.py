@@ -2,6 +2,7 @@
 
 import gc
 import os
+import time
 from pathlib import Path
 import unittest
 
@@ -50,9 +51,11 @@ class ProgressiveRuntimeOpenGLTests(unittest.TestCase):
         output_directory = Path("build") / "progressive-lod"
         output_directory.mkdir(parents=True, exist_ok=True)
 
-        def draw_and_capture(level: int, distance: float) -> None:
-            viewer.camera_distance = distance
-            viewer._activate_progressive_lod(force=True)
+        def draw_and_capture(level: int) -> None:
+            # Hold the same camera distance for every image so the output
+            # compares representation quality rather than projected tree size.
+            viewer.camera_distance = 30.0
+            viewer._activate_progressive_lod(force=True, requested_level=level)
             self.assertEqual(viewer.active_lod, level)
             self.assertGreater(viewer.wood_vertex_count, 0)
             self.assertGreater(viewer.canopy_vertex_count, 0)
@@ -74,11 +77,16 @@ class ProgressiveRuntimeOpenGLTests(unittest.TestCase):
 
             gl.glBindVertexArray(viewer.grid_vao)
             gl.glDrawArrays(gl.GL_LINES, 0, viewer.grid_vertex_count)
-            gl.glBindVertexArray(viewer.wood_vao)
-            gl.glDrawArrays(gl.GL_TRIANGLES, 0, viewer.wood_vertex_count)
-            gl.glBindVertexArray(viewer.canopy_vao)
-            gl.glDrawArrays(gl.GL_TRIANGLES, 0, viewer.canopy_vertex_count)
-            gl.glBindVertexArray(0)
+
+            if viewer.lod_transition_start is not None:
+                # Exercise the outgoing/incoming complementary dither passes
+                # halfway through the transition, then capture the settled LOD.
+                viewer.lod_transition_start = time.perf_counter() - viewer.lod_transition_duration * 0.5
+                viewer._draw_progressive_geometry()
+                gl.glFinish()
+                self.assertEqual(gl.glGetError(), gl.GL_NO_ERROR)
+                viewer.lod_transition_start = time.perf_counter() - viewer.lod_transition_duration * 2.0
+            viewer._draw_progressive_geometry()
             gl.glFinish()
             self.assertEqual(gl.glGetError(), gl.GL_NO_ERROR)
 
@@ -93,9 +101,9 @@ class ProgressiveRuntimeOpenGLTests(unittest.TestCase):
             self.assertIn(2, viewer.progressive_lods)
             self.assertIn(1, viewer.progressive_lods)
 
-            draw_and_capture(3, 60.0)
-            draw_and_capture(2, 40.0)
-            draw_and_capture(1, 20.0)
+            draw_and_capture(3)
+            draw_and_capture(2)
+            draw_and_capture(1)
 
             # Release the first three CPU mesh packages before constructing
             # the very large hero-level canopy mesh.
@@ -105,7 +113,7 @@ class ProgressiveRuntimeOpenGLTests(unittest.TestCase):
 
             lod0 = build_lod_representation(full_tree, 0)
             viewer.progressive_lods = {0: lod0}
-            draw_and_capture(0, 20.0)
+            draw_and_capture(0)
             self.assertEqual(
                 lod0.tree.metadata["source_leaf_count"],
                 len(full_tree.leaves),
