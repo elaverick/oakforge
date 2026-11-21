@@ -12,7 +12,7 @@ LOD indices follow the conventional convention: LOD0 is the closest and most det
 
 | Level | Camera distance | Content |
 |---|---:|---|
-| LOD3 | 46 m and beyond | Trunk, roots and mature scaffold through tertiary branches, with 17,760 deterministic proxy leaves |
+| LOD3 | 46 m and beyond | Trunk, roots and mature scaffold through tertiary branches, with 35,520 deterministic proxy leaves |
 | LOD2 | 26–46 m | Complete branch hierarchy including twigs and sprays, with one-quarter of original leaves enlarged by 1.2× |
 | LOD1 | 13–26 m | Complete hierarchy with one-half of original leaf placements and a more detailed leaf profile |
 | LOD0 | Under 13 m | Complete hierarchy and every individual leaf with the full oak-lobed profile |
@@ -24,7 +24,7 @@ If the desired LOD is not ready, the viewer continues to use the best available 
 ## Current generation pipeline
 
 1. The main thread reads the recipe and executes the first two branching iterations through tertiary structure. It omits terminal twigs, sprays, the fused wood-surface bake and individual-leaf placement.
-2. It places 17,760 deterministic proxy leaves in compact three-dimensional clusters along the tertiary scaffold, then builds the first wood and foliage meshes. This initial pass is synchronous, but avoids the thousands of terminal branches and 311,136 source leaves.
+2. It places 35,520 deterministic proxy leaves in compact three-dimensional clusters along the tertiary scaffold, then builds the first wood and foliage meshes. This initial pass is synchronous, but avoids the thousands of terminal branches and 311,136 source leaves.
 3. The viewer opens with LOD3.
 4. A background CPU worker executes the remaining recipe structure for the same seed: terminal twigs, sprays and the fused wood surface are generated once. It then executes one foliage scatter pass at a time. With the default four-pass oak recipe, pass one publishes LOD2 (one-quarter of actual leaves, enlarged 1.2×), pass two publishes LOD1 (one-half of actual leaves), and passes three and four complete LOD0 (all source leaves). Each ready mesh package is published through a bounded queue.
 5. The branch hierarchy and fused wood surface are unchanged by foliage passes. The worker builds the structural wood mesh once and shares that immutable CPU mesh with LOD2, LOD1 and LOD0; only the foliage mesh is rebuilt at each milestone. This reduces repeated CPU mesh work and avoids retaining duplicate wood buffers.
