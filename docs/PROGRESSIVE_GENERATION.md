@@ -14,7 +14,7 @@ LOD indices follow the conventional convention: LOD0 is the closest and most det
 |---|---:|---|
 | LOD3 | 46 m and beyond | Trunk, roots and primary/leader/secondary scaffold with 10,000 deterministic, branch-anchored proxy leaves |
 | LOD2 | 26–46 m | Adds tertiary structure and up to 54,000 denser proxy leaves distributed across the crown |
-| LOD1 | 13–26 m | Full branch hierarchy including twigs and sprays, with one-quarter of the original leaf placements |
+| LOD1 | 13–26 m | Full branch hierarchy including twigs and sprays, with one-half of the original leaf placements |
 | LOD0 | Under 13 m | Full branch hierarchy and all generated individual lobed leaves |
 
 The three distance thresholds have a two-metre hysteresis band to reduce LOD oscillation. Representation changes are hard swaps in this first implementation; hysteresis reduces repeated flips but does not provide a temporal cross-fade or dither transition. Distance is the first implementation's proxy for projected size; camera-space projected bounds should replace fixed distances when this becomes a multi-tree scene system.
