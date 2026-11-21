@@ -16,11 +16,12 @@ To recover after a conversation interruption, download and extract `OakForge_bra
 
 The progressive runtime implementation is under active development on the dedicated branch `feature/progressive-tree-generation`, based on the then-current depth-impostor LOD branch. The default viewer path is now designed to show a reduced tree first and refine it in the background:
 
-- LOD3 builds the trunk/root/primary/leader/secondary scaffold and 10,000 deterministic, branch-anchored lobed proxy leaves.
-- LOD2 adds tertiary branches and up to 54,000 proxy leaves.
-- LOD1 uses the complete branch hierarchy and one-half of the original leaf placements.
-- LOD0 uses the complete branch hierarchy and all 311,136 original leaves.
-- Automatic selection uses camera-distance bands of 46 m, 26 m and 13 m with two metres of hysteresis.
+- LOD3 builds the trunk/root scaffold through tertiary branches and 17,760 deterministic branch-anchored proxy leaves.
+- LOD2 uses the complete branch hierarchy, including twigs and sprays, with one-eighth of the 311,136 actual leaf placements.
+- LOD1 uses the complete hierarchy with one-third of actual leaf placements and a more detailed leaf outline.
+- LOD0 uses the complete hierarchy and all 311,136 actual leaves with the full oak-lobed profile.
+- Far, mid, near and hero foliage use progressively richer polygon profiles (9, 13, 17 and 21 triangles per leaf respectively).
+- Automatic selection uses camera-distance bands of 46 m, 26 m and 13 m with two metres of hysteresis. Representation changes use a 0.35-second complementary screen-space dither.
 - The initial reduced generation is synchronous. The background worker runs the complete recipe and then prepares LOD2/LOD1/LOD0. It does not yet stream individual growth milestones or independently refine subtrees.
 - CPU generation and mesh construction run away from the render loop. OpenGL uploads remain on the context-owning viewer thread.
 - The previous baked depth-impostor comparison viewer remains available through `python main.py --legacy-impostor-viewer`.
