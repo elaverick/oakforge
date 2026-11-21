@@ -219,7 +219,7 @@ class ProgressiveTreeTests(unittest.TestCase):
         # steadily as real foliage is introduced and its count is raised.
         area_lod3 = foliage_area(self.coarse_tree.leaves, 3072)
         area_lod2 = foliage_area(lod2_tree.leaves, 8192, 1.20)
-        area_lod1 = foliage_area(lod1_tree.leaves, 16384, 1.35)
+        area_lod1 = foliage_area(lod1_tree.leaves, 16384, 1.08)
         area_lod0 = foliage_area(self.full_tree.leaves, 40960)
         self.assertLess(area_lod3, area_lod2)
         self.assertLess(area_lod2, area_lod1)
