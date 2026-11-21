@@ -71,10 +71,10 @@ If the requested LOD is not ready yet, the viewer keeps the best available repre
 To measure the actual runtime mesh budgets (including an aggregate for 16 street trees), run:
 
 ```bash
-python -m oakforge.geometry_budget --instances 16
+python -m oakforge.geometry_budget --instances 16 --output-dir build/runtime-oak
 ```
 
-The command reports wood and foliage triangles, retained leaf cards, CPU/GPU buffer bytes and mesh-build time for every LOD. It fails if any single tree exceeds the 200,000-triangle runtime budget. CI runs the same report and retains the JSON output as a build artifact.
+The command reports wood and foliage triangles, retained leaf cards, CPU/GPU buffer bytes and mesh-build time for every LOD. It also exports separate wood and foliage OBJ files for LOD0–LOD3 into the requested directory. It fails if any single tree exceeds the 200,000-triangle runtime budget. CI runs the same report and retains the JSON output as a build artifact.
 
 Viewer controls:
 
