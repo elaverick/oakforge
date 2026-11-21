@@ -11,8 +11,8 @@ class OakLeafTextureTests(unittest.TestCase):
     def test_atlas_contains_transparent_lobed_leaf_silhouettes(self):
         atlas = build_oak_leaf_atlas()
         pixels = np.asarray(atlas, dtype=np.uint8)
-        self.assertEqual(atlas.size, (256, 512))
-        self.assertEqual(pixels.shape, (512, 256, 4))
+        self.assertEqual(atlas.size, (352, 512))
+        self.assertEqual(pixels.shape, (512, 352, 4))
         self.assertGreater(np.count_nonzero(pixels[:, :, 3] == 0), 20_000)
         self.assertGreater(np.count_nonzero(pixels[:, :, 3] > 240), 20_000)
         self.assertGreater(
