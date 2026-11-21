@@ -1,7 +1,7 @@
 ## 2026-11-21 — Progressive runtime tree generation and LOD
 
 - Added a default progressive viewer path that constructs the mature scaffold through tertiary branches first, with 17,760 deterministic branch-anchored proxy leaves, without waiting for terminal twigs, sprays, fused wood or individual-leaf placement.
-- Added a CPU-only background worker which executes the full deterministic recipe and prepares LOD2 (complete branch hierarchy plus one-eighth of actual leaves), LOD1 (one-third of actual leaves) and LOD0 (all 311,136 actual leaves). Far, mid, near and hero levels use progressively richer leaf polygon profiles.
+- Added a CPU-only background worker which executes the full deterministic recipe and prepares LOD2 (complete branch hierarchy plus one-quarter of actual leaves enlarged 1.2×), LOD1 (one-half of actual leaves) and LOD0 (all 311,136 actual leaves). Far, mid, near and hero levels use progressively richer leaf polygon profiles.
 - Added distance-based LOD selection with a two-metre hysteresis band and 0.35-second complementary screen-space dither transitions between ready representations.
 - Kept OpenGL operations on the viewer thread. CPU mesh packages are published through a bounded queue and uploaded by the context-owning thread.
 - Added an explicit `--legacy-impostor-viewer` option to retain the previous baked depth-impostor versus polygon comparison workflow.
