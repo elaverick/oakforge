@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feature/depth-impostor-lod
+      - feature/progressive-tree-generation
   pull_request:
     branches:
       - main
