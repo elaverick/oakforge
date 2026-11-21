@@ -18,7 +18,8 @@ The current English-oak recipe generates one trunk, seven main buttress roots, t
 - **Packed mesh builders** — expose separate polygon wood (`build_wood_mesh`), foliage (`build_foliage_mesh`) and complete legacy (`build_tree_mesh`) meshes. Terminal twigs/sprays can be routed to either the polygon mesh or canopy impostor.
 - **Layered canopy depth-impostor baker** — captures multiple depth-peeling layers of leaves into multi-view colour, normal and 16-bit depth atlases. Structural wood remains a separate polygon mesh for conventional LOD.
 - **YAML recipe engine** — calls named tools and controls their execution order.
-- **OpenGL viewer** — shaded polygons, orbit camera, zoom, hierarchy inspection, polygon/impostor canopy toggle, live model/GPU diagnostics, wireframe and seed regeneration.
+- **Progressive OpenGL viewer** — starts with a branch-anchored clustered canopy and coarse scaffold, then streams finer tree representations from a CPU worker. Distance-based LOD selection never waits for a finer representation. OpenGL uploads remain on the context-owning thread.
+- **Legacy impostor viewer** — retains the baked layered depth-impostor versus polygon comparison for explicit A/B inspection.
 - **OBJ exporter** — writes the generated geometry for inspection in Blender or another 3D package.
 
 All source files are separated by responsibility under `oakforge/`. The default oak's structure and all tool inputs are declared in `configs/english_oak.yaml`.
@@ -40,7 +41,7 @@ python -m pip install -r requirements.txt
 
 On Windows, install a current graphics driver and run from a normal desktop session. The viewer uses GLFW to create an OpenGL 3.3 core-profile window.
 
-## Run the oak viewer
+## Run the progressive tree viewer
 
 From the project root:
 
@@ -48,11 +49,24 @@ From the project root:
 python main.py
 ```
 
-Choose another recipe with:
+OakForge first constructs a coarse tree with a real branch scaffold and a compact, deterministic cluster canopy. It then generates the full tree and prepares successively finer LODs on a background CPU worker. The viewer stays responsive and continues drawing the best available representation while refinement runs.
+
+Use another recipe with:
 
 ```bash
 python main.py --config configs/english_oak.yaml
 ```
+
+Automatic LOD is selected by camera distance, with hysteresis-free fixed thresholds in this first implementation:
+
+| LOD | Camera distance | Representation |
+|---|---:|---|
+| LOD3 | 46 m and beyond | Primary/leader/secondary scaffold with branch-anchored foliage clusters |
+| LOD2 | 26–46 m | Adds tertiary structure and denser clustered foliage |
+| LOD1 | 13–26 m | Full branch hierarchy and one-eighth sampling of actual leaves |
+| LOD0 | Under 13 m | Full branch hierarchy and all generated detailed leaves |
+
+If the requested LOD is not ready yet, the viewer keeps the closest higher-quality representation already prepared. It never blocks the render loop waiting for the worker.
 
 Viewer controls:
 
@@ -60,23 +74,16 @@ Viewer controls:
 |---|---|
 | Left mouse drag | Orbit around the tree |
 | Mouse wheel | Zoom |
-| `1` | Trunk only |
-| `2` | Trunk and primary branches |
-| `3` | Add secondary branches |
-| `4` | Add tertiary branches |
-| `5` | Full tree, including terminal twigs and leaves |
-| `I` | Toggle canopy between genuine leaf polygons and the depth impostor |
-| `C` | Cycle impostor splats: square, round, angular and foliage breakup |
-| `[` / `]` | Decrease / increase impostor foliage noise strength |
-| `,` / `.` | Decrease / increase impostor foliage noise scale |
-| `-` / `=` | Decrease / increase impostor angularity |
-| `Z` / `X` | Decrease / increase impostor splat footprint size |
+| `A` | Enable / pause automatic distance-based LOD |
+| `1`–`5` | Manual structural inspection; pauses automatic LOD |
 | `L` | Toggle canopy visibility |
 | `W` | Toggle polygon wireframe |
 | `V` | Toggle VSync (off by default for benchmarking) |
-| `R` | Regenerate using the next random seed and bake its canopy |
+| `R` | Regenerate with the next seed after the current worker has finished |
 | `F` | Reset the camera |
 | `Escape` | Close the viewer |
+
+The previous baked-impostor A/B viewer remains available with `python main.py --legacy-impostor-viewer`. The standalone `python -m oakforge.render.impostor` command and its 64-view layered depth captures are unchanged.
 
 ## Bake a canopy depth impostor
 
@@ -86,9 +93,9 @@ Bake the leaves separately from the polygon-based trunk and branches:
 python -m oakforge.render.impostor --config configs/english_oak.yaml --output build/english_oak_canopy
 ```
 
-The default captures leaves only. The interactive viewer automatically bakes and caches a 64-view, 512px-per-view, four-layer canopy depth impostor the first time a recipe/seed/quality combination is opened. Use `--impostor-views`, `--impostor-tile-size` and `--impostor-layers` to change that quality. The runtime forward-projects the actual reconstructed depth samples as depth-tested point splats. It selects one coherent capture view at a time rather than averaging unrelated leaf surfaces from neighbouring views. Add `--include-twigs` to the standalone bake command to capture terminal twig and spray tubes too.
+The default captures leaves only. The legacy impostor viewer automatically bakes and caches a 64-view, 512px-per-view, four-layer canopy depth impostor the first time a recipe/seed/quality combination is opened. The default progressive viewer does not require this bake. Use `--impostor-views`, `--impostor-tile-size` and `--impostor-layers` to change that quality. The runtime forward-projects the actual reconstructed depth samples as depth-tested point splats. It selects one coherent capture view at a time rather than averaging unrelated leaf surfaces from neighbouring views. Add `--include-twigs` to the standalone bake command to capture terminal twig and spray tubes too.
 
-Press `I` in the viewer to switch between the leaf polygons and the depth impostor. The diagnostics panel reports source-model and active triangle counts, per-representation geometry and tracked canopy allocations, device/process VRAM where supported, GPU utilisation, current FPS and frame time, and retained per-mode average FPS, CPU frame time and GPU scene time. Press `B` to reset the A/B averages. VSync is off by default so the two modes can be benchmarked without a 60Hz cap. Install `nvidia-ml-py` (included in requirements) for NVIDIA device/process telemetry; OpenGL VRAM querying is used as a fallback when available. Device/process VRAM is driver telemetry, while the viewer's tracked GPU allocations isolate its known buffers and textures. The default texture arrays require approximately 640 MiB of GPU storage. See [the canopy impostor notes](docs/DEPTH_IMPOSTORS.md) for details, quality trade-offs and metric definitions.
+In the legacy viewer, press `I` to switch between leaf polygons and the depth impostor. The default progressive viewer uses cluster and polygon LODs and does not require a pre-baked atlas. The diagnostics panel reports source-model and active triangle counts, per-representation geometry and tracked canopy allocations, device/process VRAM where supported, GPU utilisation, current FPS and frame time, and retained per-mode average FPS, CPU frame time and GPU scene time. Press `B` to reset the A/B averages. VSync is off by default so the two modes can be benchmarked without a 60Hz cap. Install `nvidia-ml-py` (included in requirements) for NVIDIA device/process telemetry; OpenGL VRAM querying is used as a fallback when available. Device/process VRAM is driver telemetry, while the viewer's tracked GPU allocations isolate its known buffers and textures. The default texture arrays require approximately 640 MiB of GPU storage. See [the canopy impostor notes](docs/DEPTH_IMPOSTORS.md) for details, quality trade-offs and metric definitions.
 
 ## Generate without a graphics window
 
