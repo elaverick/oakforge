@@ -1,6 +1,6 @@
 ## 2026-11-21 — Progressive runtime tree generation and LOD
 
-- Added a default progressive viewer path that constructs the mature scaffold through tertiary branches first, with 17,760 deterministic branch-anchored proxy leaves, without waiting for terminal twigs, sprays, fused wood or individual-leaf placement.
+- Added a default progressive viewer path that constructs the mature scaffold through tertiary branches first, with 35,520 deterministic branch-anchored proxy leaves, without waiting for terminal twigs, sprays, fused wood or individual-leaf placement.
 - Added a CPU-only background worker which completes structural growth once, then runs foliage scatter passes incrementally: the first pass publishes LOD2 (one-quarter of actual leaves enlarged 1.2×), the second publishes LOD1 (one-half of actual leaves), and the remaining passes complete LOD0 (all 311,136 actual leaves). Far, mid, near and hero levels use progressively richer leaf polygon profiles.
 - Added distance-based LOD selection with a two-metre hysteresis band and 0.35-second complementary screen-space dither transitions between ready representations. Added manual LOD selection on keys 1–4 and automatic distance selection on 5/A.
 - Kept OpenGL operations on the viewer thread. CPU foliage mesh packages are published through a bounded queue and uploaded by the context-owning thread. LOD2/LOD1/LOD0 share a single immutable structural wood mesh.
