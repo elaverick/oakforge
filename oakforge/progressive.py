@@ -6,10 +6,11 @@ models and packed meshes which the viewer's context-owning thread can upload.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Event, Thread
+from time import perf_counter
 from typing import Any
 import math
 
@@ -30,6 +31,8 @@ class ProgressiveLOD:
     tree: TreeModel
     wood_mesh: MeshData
     foliage_mesh: MeshData
+    mesh_build_seconds: float = 0.0
+    full_generation_seconds: float = 0.0
 
     @property
     def triangle_count(self) -> int:
@@ -192,16 +195,21 @@ def _tree_for_level(source: TreeModel, level: int) -> TreeModel:
 
 def build_lod_representation(tree: TreeModel, level: int) -> ProgressiveLOD:
     """Build one LOD's CPU geometry without creating or touching GPU resources."""
+    build_started = perf_counter()
     lod_tree = _tree_for_level(tree, level) if level < 3 else tree
     wood_mesh = build_wood_mesh(lod_tree)
     foliage_mesh = build_foliage_mesh(lod_tree)
+    mesh_build_seconds = perf_counter() - build_started
     names = {
         0: "Detailed foliage",
         1: "Full shoots · sampled leaves",
         2: "Tertiary branches · foliage clusters",
         3: "Primary scaffold · foliage clusters",
     }
-    return ProgressiveLOD(level, names[level], lod_tree, wood_mesh, foliage_mesh)
+    return ProgressiveLOD(
+        level, names[level], lod_tree, wood_mesh, foliage_mesh,
+        mesh_build_seconds=mesh_build_seconds,
+    )
 
 
 class ProgressiveTreeWorker:
@@ -229,11 +237,17 @@ class ProgressiveTreeWorker:
             recipe = load_recipe(self.recipe_path)
             if self.seed_override is not None:
                 recipe["tree"]["seed"] = int(self.seed_override)
+            generation_started = perf_counter()
             tree = generate_tree(recipe)
+            full_generation_seconds = perf_counter() - generation_started
             for level in (2, 1, 0):
                 if self._stop.is_set():
                     return
                 representation = build_lod_representation(tree, level)
+                representation = replace(
+                    representation,
+                    full_generation_seconds=full_generation_seconds,
+                )
                 if not self._publish(representation):
                     return
         except BaseException as error:
