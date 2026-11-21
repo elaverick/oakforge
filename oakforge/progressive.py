@@ -172,12 +172,12 @@ def _tree_for_level(source: TreeModel, level: int) -> TreeModel:
             "proxy_leaf_count": len(tree.leaves),
         })
     elif level == 1:
-        # One in every four leaves preserves the original placements and colours
-        # while reducing the close/mid-range foliage mesh to a practical fraction.
-        tree = TreeModel(source.name, list(source.branches), source.leaves[::4], metadata)
+        # One in every two leaves preserves the original placements and colours
+        # while retaining a substantial reduction from the full-detail canopy.
+        tree = TreeModel(source.name, list(source.branches), source.leaves[::2], metadata)
         metadata.update({
             "progressive_level": 1,
-            "progressive_status": "full shoots and one-quarter leaf sampling",
+            "progressive_status": "full shoots and one-half leaf sampling",
             "source_leaf_count": len(source.leaves),
             "proxy_leaf_count": len(tree.leaves),
         })
