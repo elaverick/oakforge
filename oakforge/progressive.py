@@ -455,7 +455,7 @@ def build_lod_representation(
     # The fused bole and major scaffold are shared by all levels. Fine branch
     # tubes are resampled and terminal twigs/sprays are replaced by leaf cards.
     branch_depths = {3: 2, 2: 3, 1: 3, 0: 3}
-    branch_segments = {3: 3, 2: 4, 1: 4, 0: 6}
+    branch_segments = {3: 3, 2: 4, 1: 4, 0: 4}
     wood_mesh = shared_wood_mesh if shared_wood_mesh is not None else build_wood_mesh(
         lod_tree,
         radial_sides=8,
