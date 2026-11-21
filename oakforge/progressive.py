@@ -460,7 +460,7 @@ def build_lod_representation(
     # preserve a strictly increasing foliage-area budget towards LOD0. LOD3's
     # scaffold proxies are deliberately larger than source leaves; without
     # this compensation, LOD2 can look less filled than the farther LOD3.
-    leaf_size_scales = {2: 1.40, 1: 1.08}
+    leaf_size_scales = {2: 1.34, 1: 1.08}
     foliage_mesh = build_foliage_mesh(
         lod_tree,
         leaf_profile=leaf_profiles.get(level),
