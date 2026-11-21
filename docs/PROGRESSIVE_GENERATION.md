@@ -12,8 +12,8 @@ LOD indices follow the conventional convention: LOD0 is the closest and most det
 
 | Level | Camera distance | Content |
 |---|---:|---|
-| LOD3 | 46 m and beyond | Trunk, roots and primary/leader/secondary scaffold with 1,800 deterministic, branch-anchored proxy leaves |
-| LOD2 | 26–46 m | Adds tertiary structure and up to 7,200 denser proxy leaves distributed across the crown |
+| LOD3 | 46 m and beyond | Trunk, roots and primary/leader/secondary scaffold with 6,000 deterministic, branch-anchored proxy leaves |
+| LOD2 | 26–46 m | Adds tertiary structure and up to 18,000 denser proxy leaves distributed across the crown |
 | LOD1 | 13–26 m | Full branch hierarchy including twigs and sprays, with one-eighth of the original leaf placements |
 | LOD0 | Under 13 m | Full branch hierarchy and all generated individual lobed leaves |
 
@@ -24,7 +24,7 @@ If the desired LOD is not ready, the viewer continues to use the best available 
 ## Current generation pipeline
 
 1. The main thread reads the recipe and executes a reduced pipeline through secondary branching. It omits the expensive fine branching, spray, wood-union bake and individual-leaf placement passes.
-2. It places 1,800 deterministic lobed proxy leaves along the initial scaffold and builds the first wood and foliage meshes. This initial pass is synchronous, but is intentionally bounded to a small number of branches and proxy leaves.
+2. It places 6,000 deterministic lobed proxy leaves along the initial scaffold and builds the first wood and foliage meshes. This initial pass is synchronous, but is intentionally bounded to a small number of branches and proxy leaves.
 3. The viewer opens with LOD3.
 4. A background CPU worker executes the complete recipe for the same seed. It then builds LOD2, LOD1 and LOD0, publishing each completed mesh package through a bounded queue.
 5. The render thread drains completed packages and performs all OpenGL resource uploads. The CPU worker never calls OpenGL.
