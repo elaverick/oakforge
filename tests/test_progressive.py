@@ -135,7 +135,7 @@ class ProgressiveTreeTests(unittest.TestCase):
             self.assertTrue(np.isfinite(np.frombuffer(mesh.positions, dtype=np.float32)).all())
             expected_cpu_bytes += sum(
                 len(buffer) * buffer.itemsize
-                for buffer in (mesh.positions, mesh.normals, mesh.colours)
+                for buffer in (mesh.positions, mesh.normals, mesh.colours, mesh.texcoords)
             )
         self.assertEqual(representation.cpu_bytes, expected_cpu_bytes)
 
@@ -185,7 +185,7 @@ class ProgressiveTreeTests(unittest.TestCase):
         lod2_tree = _tree_for_level(self.full_tree, 2)
         lod1_tree = _tree_for_level(self.full_tree, 1)
         for tree, profile, scale in (
-            (lod2_tree, MID_LEAF_PROFILE, 1.34),
+            (lod2_tree, MID_LEAF_PROFILE, 1.20),
             (lod1_tree, NEAR_LEAF_PROFILE, 1.08),
         ):
             regular = build_foliage_mesh(tree, leaf_profile=profile)
@@ -218,7 +218,7 @@ class ProgressiveTreeTests(unittest.TestCase):
         # The proxy clusters start larger, but actual leaf coverage increases
         # steadily as real foliage is introduced and its count is raised.
         area_lod3 = foliage_area(self.coarse_tree.leaves, 3072)
-        area_lod2 = foliage_area(lod2_tree.leaves, 8192, 1.80)
+        area_lod2 = foliage_area(lod2_tree.leaves, 8192, 1.20)
         area_lod1 = foliage_area(lod1_tree.leaves, 16384, 1.35)
         area_lod0 = foliage_area(self.full_tree.leaves, 40960)
         self.assertLess(area_lod3, area_lod2)
@@ -268,6 +268,10 @@ class ProgressiveTreeTests(unittest.TestCase):
                 len(representation.foliage_mesh.texcoords),
                 expected_leaves * 6 * 2,
                 "Every card vertex must carry its oak-atlas UV",
+            )
+            self.assertGreaterEqual(
+                representation.gpu_vertex_buffer_bytes,
+                representation.cpu_bytes,
             )
             self.assertLess(
                 representation.triangle_count,
