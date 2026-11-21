@@ -96,6 +96,8 @@ class ProgressiveWorkerTests(unittest.TestCase):
         )
         self.assertTrue(all(lod.wood_mesh.triangle_count > 0 for lod in lods))
         self.assertTrue(all(lod.foliage_mesh.triangle_count > 0 for lod in lods))
+        self.assertIs(lods[0].wood_mesh, lods[1].wood_mesh)
+        self.assertIs(lods[1].wood_mesh, lods[2].wood_mesh)
         # Branches, twigs, sprays and the fused wood surface do not change
         # between foliage-only LODs, so their immutable CPU wood mesh is shared.
         self.assertIs(lods[0].wood_mesh, lods[1].wood_mesh)
