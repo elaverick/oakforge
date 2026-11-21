@@ -314,24 +314,24 @@ def _make_oak_leaves(
             leaf_normals[:, None, None, :], triangle_positions.shape
         )
 
-        # The atlas has sixteen 88x128 oak-leaf variants in a 4x4 layout.
+        # The atlas has four 88x128 oak-leaf variants in a 2x2 layout.
         # A stable ID hash chooses a tile without introducing run-to-run flicker.
         tile_indices = np.fromiter(
-            (zlib.crc32(leaf.leaf_id.encode("utf-8")) % 16 for leaf in leaves),
+            (zlib.crc32(leaf.leaf_id.encode("utf-8")) % 4 for leaf in leaves),
             dtype=np.int32,
             count=len(leaves),
         )
-        tile_columns = tile_indices % 4
-        tile_rows_from_top = tile_indices // 4
-        atlas_width = 4 * 88
-        atlas_height = 4 * 128
+        tile_columns = tile_indices % 2
+        tile_rows_from_top = tile_indices // 2
+        atlas_width = 2 * 88
+        atlas_height = 2 * 128
         padding_x = 2.0 / atlas_width
         padding_y = 2.0 / atlas_height
-        u_min = tile_columns.astype(np.float32) / 4.0 + padding_x
-        u_max = (tile_columns.astype(np.float32) + 1.0) / 4.0 - padding_x
-        gl_rows_from_bottom = (3 - tile_rows_from_top).astype(np.float32)
-        v_min = gl_rows_from_bottom / 4.0 + padding_y
-        v_max = (gl_rows_from_bottom + 1.0) / 4.0 - padding_y
+        u_min = tile_columns.astype(np.float32) / 2.0 + padding_x
+        u_max = (tile_columns.astype(np.float32) + 1.0) / 2.0 - padding_x
+        gl_rows_from_bottom = (1 - tile_rows_from_top).astype(np.float32)
+        v_min = gl_rows_from_bottom / 2.0 + padding_y
+        v_max = (gl_rows_from_bottom + 1.0) / 2.0 - padding_y
 
         triangle_uvs = np.stack((
             np.stack((
