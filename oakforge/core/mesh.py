@@ -524,6 +524,7 @@ def write_obj(mesh: MeshData, file_path: str) -> None:
             "Kd 1.0 1.0 1.0\n"
             "d 1.0\n"
             "illum 1\n"
-            "map_Kd oak_leaf_atlas.png\n",
+            "map_Kd oak_leaf_atlas.png\n"
+            "map_d oak_leaf_atlas.png\n",
             encoding="utf-8",
         )
