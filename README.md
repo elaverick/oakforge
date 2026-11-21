@@ -75,7 +75,8 @@ Viewer controls:
 | Left mouse drag | Orbit around the tree |
 | Mouse wheel | Zoom |
 | `A` | Enable / pause automatic distance-based LOD |
-| `1`–`5` | Manual structural inspection; pauses automatic LOD |
+| `1`–`4` | Manually select LOD3 / LOD2 / LOD1 / LOD0; pauses automatic LOD |
+| `5` or `A` | Resume automatic distance-based LOD |
 | `L` | Toggle canopy visibility |
 | `W` | Toggle polygon wireframe |
 | `V` | Toggle VSync (off by default for benchmarking) |
