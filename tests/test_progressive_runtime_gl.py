@@ -9,8 +9,11 @@ import unittest
 import numpy as np
 from PIL import Image
 
-from oakforge.generation import generate_from_file
-from oakforge.progressive import build_lod_representation, generate_coarse_tree
+from oakforge.progressive import (
+    ProgressiveTreeWorker,
+    build_lod_representation,
+    generate_coarse_tree,
+)
 from oakforge.render.opengl_viewer import OpenGLViewer
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -25,27 +28,12 @@ class ProgressiveRuntimeOpenGLTests(unittest.TestCase):
     def test_viewer_uploads_and_draws_actual_progressive_lod_meshes(self):
         coarse_tree = generate_coarse_tree(RECIPE)
         initial = build_lod_representation(coarse_tree, 3)
-        full_tree = generate_from_file(RECIPE)
-        lod2 = build_lod_representation(full_tree, 2)
-        lod1 = build_lod_representation(full_tree, 1)
-        packages = [lod2, lod1, None]
-
-        class FakeWorker:
-            recipe_path = RECIPE
-
-            def poll(self):
-                nonlocal packages
-                result, packages = packages, []
-                return result
-
-            def close(self, timeout=2.0):
-                return None
-
+        worker = ProgressiveTreeWorker(RECIPE)
         viewer = OpenGLViewer(
             coarse_tree,
             lambda: coarse_tree,
             Path("build") / "progressive-smoke",
-            progressive_worker=FakeWorker(),
+            progressive_worker=worker,
             initial_lod=initial,
         )
         output_directory = Path("build") / "progressive-lod"
@@ -100,28 +88,32 @@ class ProgressiveRuntimeOpenGLTests(unittest.TestCase):
             self.assertNotIn("transition_canopy_vbo", viewer.gpu_allocations)
 
         try:
-            viewer._poll_progressive_updates()
-            self.assertTrue(viewer.progressive_finished)
-            self.assertIn(2, viewer.progressive_lods)
-            self.assertIn(1, viewer.progressive_lods)
+            # Let the real recipe worker publish each foliage-pass milestone.
+            deadline = time.monotonic() + 240.0
+            while not viewer.progressive_finished and time.monotonic() < deadline:
+                viewer._poll_progressive_updates()
+                time.sleep(0.01)
+            self.assertTrue(viewer.progressive_finished, viewer.status_message)
+            self.assertFalse(viewer.progressive_error, viewer.status_message)
+            self.assertEqual(sorted(viewer.progressive_lods), [0, 1, 2, 3])
+
+            lod2 = viewer.progressive_lods[2]
+            lod1 = viewer.progressive_lods[1]
+            lod0 = viewer.progressive_lods[0]
+            full_leaf_count = len(lod0.tree.leaves)
+            self.assertEqual(len(lod2.tree.leaves), (full_leaf_count + 3) // 4)
+            self.assertEqual(len(lod1.tree.leaves), (full_leaf_count + 1) // 2)
+            self.assertEqual(lod2.tree.metadata["source_leaf_count"], full_leaf_count)
+            self.assertEqual(lod1.tree.metadata["source_leaf_count"], full_leaf_count)
+            self.assertEqual(lod0.tree.metadata["source_leaf_count"], full_leaf_count)
+            self.assertEqual(lod2.generation_complete, False)
+            self.assertEqual(lod1.generation_complete, False)
+            self.assertEqual(lod0.generation_complete, True)
 
             draw_and_capture(3)
             draw_and_capture(2)
             draw_and_capture(1)
-
-            # Release the first three CPU mesh packages before constructing
-            # the very large hero-level canopy mesh.
-            viewer.progressive_lods.clear()
-            del initial, lod2, lod1, packages
-            gc.collect()
-
-            lod0 = build_lod_representation(full_tree, 0)
-            viewer.progressive_lods = {0: lod0}
             draw_and_capture(0)
-            self.assertEqual(
-                lod0.tree.metadata["source_leaf_count"],
-                len(full_tree.leaves),
-            )
             gl = viewer.gl
             self.assertEqual(gl.glGetError(), gl.GL_NO_ERROR)
 
