@@ -72,6 +72,33 @@ class OakGenerationTests(unittest.TestCase):
         self.assertLess(float(twig_points[:, 1].max()), 15.2)
         self.assertGreater(float(twig_points[:, 1].max()), 13.4)
 
+    def test_child_calibre_does_not_compound_parent_distal_taper(self):
+        branch_by_id = {branch.branch_id: branch for branch in self.tree.branches}
+        tiers = ("primary", "leader", "secondary", "tertiary")
+        # For branches attached in the outer half of a parent, their base
+        # calibre must remain a meaningful fraction of the parent's structural
+        # section, rather than collapsing in proportion to the distal taper.
+        for branch in self.tree.branches:
+            if branch.role not in tiers or branch.parent_id is None:
+                continue
+            parent = branch_by_id[branch.parent_id]
+            position = float(branch.metadata["parent_position"])
+            local_parent_radius = parent.radius_at(position)
+            structural_parent_radius = float(np.quantile(parent.radii, 0.75))
+            expected_floor = structural_parent_radius * 0.55 * {
+                "primary": 0.62,
+                "leader": 0.44,
+                "secondary": 0.34,
+                "tertiary": 0.31,
+            }[branch.role]
+            self.assertGreaterEqual(
+                branch.radii[0],
+                expected_floor - 1e-8,
+                f"{branch.role} {branch.branch_id} collapsed at parent position {position:.3f} "
+                f"(local parent radius {local_parent_radius:.4f}, structural "
+                f"radius {structural_parent_radius:.4f})",
+            )
+
     def test_every_child_branch_references_a_generated_parent(self):
         branch_ids = {branch.branch_id for branch in self.tree.branches}
         for branch in self.tree.branches:
