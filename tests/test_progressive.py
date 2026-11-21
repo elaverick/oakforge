@@ -96,6 +96,32 @@ class ProgressiveTreeTests(unittest.TestCase):
             self.assertAlmostEqual(left.length, right.length)
             self.assertAlmostEqual(left.width, right.width)
 
+    def test_cluster_sprays_keep_leaf_bases_compactly_grouped(self):
+        leaves = build_cluster_leaves(
+            self.coarse_tree,
+            target_count=48,
+            seed_offset=19,
+            leaf_size=0.14,
+            cluster_size=6,
+        )
+        self.assertEqual(len(leaves), 48)
+        groups = {}
+        for leaf in leaves:
+            cluster_id = leaf.leaf_id.rsplit("_", 1)[0]
+            groups.setdefault(cluster_id, []).append(leaf)
+        self.assertEqual(len(groups), 8)
+        for cluster_id, cluster_leaves in groups.items():
+            self.assertEqual(len(cluster_leaves), 6, cluster_id)
+            positions = np.asarray([leaf.base_position for leaf in cluster_leaves])
+            distances = np.linalg.norm(
+                positions[:, None, :] - positions[None, :, :], axis=2
+            )
+            self.assertLess(
+                float(np.max(distances)),
+                0.32,
+                f"{cluster_id} should form a compact spray rather than isolated cards",
+            )
+
     def test_initial_lod_has_valid_wood_and_foliage_buffers(self):
         representation = build_lod_representation(self.coarse_tree, 3)
         self.assertEqual(representation.level, 3)
@@ -236,6 +262,12 @@ class ProgressiveTreeTests(unittest.TestCase):
                 representation.foliage_mesh.triangle_count,
                 expected_leaves * 2,
                 "Runtime leaves must remain two-triangle cards",
+            )
+            self.assertTrue(representation.foliage_mesh.uses_leaf_texture)
+            self.assertEqual(
+                len(representation.foliage_mesh.texcoords),
+                expected_leaves * 6 * 2,
+                "Every card vertex must carry its oak-atlas UV",
             )
             self.assertLess(
                 representation.triangle_count,
