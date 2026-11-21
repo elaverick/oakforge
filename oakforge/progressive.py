@@ -47,7 +47,15 @@ class ProgressiveLOD:
         return sum(
             len(buffer) * buffer.itemsize
             for mesh in (self.wood_mesh, self.foliage_mesh)
-            for buffer in (mesh.positions, mesh.normals, mesh.colours)
+            for buffer in (mesh.positions, mesh.normals, mesh.colours, mesh.texcoords)
+        )
+
+    @property
+    def gpu_vertex_buffer_bytes(self) -> int:
+        """Return the interleaved 11-float-per-vertex upload size."""
+        return sum(
+            (len(mesh.positions) // 3) * 11 * 4
+            for mesh in (self.wood_mesh, self.foliage_mesh)
         )
 
 
