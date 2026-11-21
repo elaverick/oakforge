@@ -51,6 +51,13 @@ class ProgressiveRuntimeOpenGLTests(unittest.TestCase):
             self.assertEqual(viewer.active_lod, level)
             self.assertGreater(viewer.wood_vertex_count, 0)
             self.assertGreater(viewer.canopy_vertex_count, 0)
+            active_representation = viewer.progressive_lods[level]
+            self.assertTrue(active_representation.foliage_mesh.uses_leaf_texture)
+            self.assertEqual(
+                len(active_representation.foliage_mesh.texcoords),
+                viewer.canopy_vertex_count * 2,
+            )
+            self.assertNotEqual(viewer.leaf_texture, 0)
 
             gl = viewer.gl
             width, height = viewer.glfw.get_framebuffer_size(viewer.window)
