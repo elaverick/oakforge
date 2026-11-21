@@ -633,7 +633,7 @@ class OpenGLViewer:
                 f"Process VRAM: {self._format_bytes(process)} | GPU load {str(util) + '%' if util is not None else 'n/a'}",
                 f"GPU memory controller: {str(memory_util) + '%' if memory_util is not None else 'n/a'}",
                 f"Renderer: {telemetry['gpu_name']}",
-                "Controls: A automatic LOD | mouse wheel distance | 1-5 manual structure | L canopy | R regenerate after worker finishes",
+                "Controls: A or 5 automatic LOD | 1-4 select LOD3 through LOD0 | L canopy | R regenerate after worker finishes",
                 "Camera distance LOD bands: LOD3 >=46m | LOD2 26-46m | LOD1 13-26m | LOD0 <13m (2m hysteresis)",
             ]
             for level, representation in sorted(self.progressive_lods.items()):
@@ -895,15 +895,28 @@ class OpenGLViewer:
             self.vsync = not self.vsync
             glfw.swap_interval(1 if self.vsync else 0)
         elif key in (glfw.KEY_1, glfw.KEY_2, glfw.KEY_3, glfw.KEY_4, glfw.KEY_5):
-            self.progressive_auto = False
-            self.max_depth = key - glfw.KEY_1
-            self._upload_wood_mesh()
-            self._set_canopy_mode(self.canopy_mode)
+            if self.progressive_worker is not None:
+                if key == glfw.KEY_5:
+                    self.progressive_auto = True
+                    self._activate_progressive_lod()
+                    self.status_message = "Automatic distance LOD resumed"
+                else:
+                    self.progressive_auto = False
+                    requested_level = 3 - (key - glfw.KEY_1)
+                    self._activate_progressive_lod(requested_level=requested_level)
+                    self.status_message = (
+                        f"Manual LOD{requested_level} selected; press 5 or A for automatic LOD"
+                    )
+            else:
+                self.progressive_auto = False
+                self.max_depth = key - glfw.KEY_1
+                self._upload_wood_mesh()
+                self._set_canopy_mode(self.canopy_mode)
         elif key == glfw.KEY_A and self.progressive_worker is not None:
             self.progressive_auto = not self.progressive_auto
             self.status_message = (
                 "Automatic distance LOD enabled" if self.progressive_auto
-                else "Automatic distance LOD paused; use 1-5 for structural inspection"
+                else "Automatic distance LOD paused; use 1-4 to select LOD3 through LOD0"
             )
             if self.progressive_auto:
                 self._activate_progressive_lod()
@@ -1173,7 +1186,8 @@ class OpenGLViewer:
         print("  Mouse wheel                 : zoom")
         if self.progressive_worker is not None:
             print("  A                           : enable / pause automatic distance-based LOD")
-            print("  1 / 2 / 3 / 4 / 5           : manual structural inspection (pauses automatic LOD)")
+            print("  1 / 2 / 3 / 4               : select LOD3 / LOD2 / LOD1 / LOD0")
+            print("  5 or A                      : resume automatic distance-based LOD")
             print("  L                           : toggle canopy visibility")
             print("  R                           : regenerate after current background generation finishes")
         else:
