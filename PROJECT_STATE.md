@@ -22,7 +22,7 @@ The progressive runtime implementation is under active development on the dedica
 - LOD0 uses the complete hierarchy and all 311,136 actual leaves with the full oak-lobed profile.
 - Far, mid, near and hero foliage use progressively richer polygon profiles (9, 13, 17 and 21 triangles per leaf respectively).
 - Automatic selection uses camera-distance bands of 46 m, 26 m and 13 m with two metres of hysteresis. Representation changes use a 0.35-second complementary screen-space dither.
-- The initial reduced generation is synchronous. The background worker runs the complete recipe and then prepares LOD2/LOD1/LOD0. It does not yet stream individual growth milestones or independently refine subtrees.
+- The initial reduced generation is synchronous. The background worker completes twigs, sprays and the fused wood surface once, then runs leaf scatter passes incrementally: default pass 1 publishes LOD2, pass 2 publishes LOD1, and passes 3–4 finish LOD0. It does not yet stream individual branch-growth milestones or independently refine subtrees.
 - CPU generation and mesh construction run away from the render loop. OpenGL uploads remain on the context-owning viewer thread.
 - The previous baked depth-impostor comparison viewer remains available through `python main.py --legacy-impostor-viewer`.
 
