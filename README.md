@@ -57,7 +57,7 @@ Use another recipe with:
 python main.py --config configs/english_oak.yaml
 ```
 
-Automatic LOD is selected by camera distance, with hysteresis-free fixed thresholds in this first implementation:
+Automatic LOD is selected by camera distance, with a two-metre hysteresis band around each fixed threshold in this first implementation:
 
 | LOD | Camera distance | Representation |
 |---|---:|---|
