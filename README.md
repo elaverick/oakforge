@@ -68,6 +68,14 @@ Automatic LOD is selected by camera distance, with a two-metre hysteresis band a
 
 If the requested LOD is not ready yet, the viewer keeps the best available representation and never blocks the render loop waiting for the worker. Each transition uses a 0.35-second complementary screen-space dither between the outgoing and incoming meshes, with a two-metre hysteresis band around each distance threshold.
 
+To measure the actual runtime mesh budgets (including an aggregate for 16 street trees), run:
+
+```bash
+python -m oakforge.geometry_budget --instances 16
+```
+
+The command reports wood and foliage triangles, retained leaf cards, CPU/GPU buffer bytes and mesh-build time for every LOD. It fails if any single tree exceeds the 200,000-triangle runtime budget. CI runs the same report and retains the JSON output as a build artifact.
+
 Viewer controls:
 
 | Input | Action |
