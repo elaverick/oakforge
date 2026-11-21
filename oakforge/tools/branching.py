@@ -65,22 +65,6 @@ def _fit_to_crown_envelope(
     return shaped_points
 
 
-def _child_base_radius(parent: Branch, position: float, radius_scale: float) -> float:
-    """Estimate child calibre without compounding the parent's distal taper.
-
-    A parent branch's local radius can be tiny near its tip. Using only that
-    value for every descendant multiplies taper at each branching generation
-    and can make a major fork appear to collapse. Blend the local value with
-    a robust upper-quartile radius from the parent profile. The local value
-    still wins on thicker sections; the floor only prevents accidental
-    collapse caused by an attachment on a sharply tapered section.
-    """
-    local_radius = parent.radius_at(position)
-    structural_radius = float(np.quantile(parent.radii, 0.75))
-    reference_radius = max(local_radius, structural_radius * 0.55)
-    return max(0.0, reference_radius * radius_scale)
-
-
 def create_child_branches(
     context: GenerationContext,
     parent: Branch,
@@ -149,8 +133,7 @@ def create_child_branches(
         parent_tangent = parent.tangent_at(branch_position)
         parent_radius = parent.radius_at(branch_position)
         # Start the child slightly inside the parent instead of exactly on its
-        # centreline. Keep the offset based on the actual attachment-section
-        # radius even though child calibre uses a more stable structural radius.
+        # centreline. This keeps the basal cap buried when its parent is thin.
         parent_point = parent_attachment - parent_tangent * (parent_radius * junction_embed)
         radial_axis, _ = perpendicular_frame(parent_tangent)
         adaptive_upward_bias = upward_bias
@@ -245,10 +228,7 @@ def create_child_branches(
         if isinstance(crown_envelope, dict):
             centreline = _fit_to_crown_envelope(centreline, crown_envelope, crown_inset)
 
-        starting_radius = max(
-            _child_base_radius(parent, branch_position, radius_scale),
-            minimum_base_radius,
-        )
+        starting_radius = max(parent.radius_at(branch_position) * radius_scale, minimum_base_radius)
         ending_radius = max(starting_radius * radius_tip_scale, minimum_tip_radius)
         radius_profile = []
         for sample_index in range(segment_count + 1):
