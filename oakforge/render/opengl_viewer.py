@@ -642,14 +642,14 @@ class OpenGLViewer:
                     f"{representation.cpu_bytes / (1024 ** 2):.1f} MiB CPU | "
                     f"mesh {representation.mesh_build_seconds:.2f}s"
                 )
-            recipe_times = [
-                representation.full_generation_seconds
+            completed_generation_times = [
+                representation.generation_elapsed_seconds
                 for representation in self.progressive_lods.values()
-                if representation.full_generation_seconds > 0.0
+                if representation.generation_complete
             ]
             lines.append(
-                f"Full recipe generation: {max(recipe_times):.2f}s"
-                if recipe_times else "Full recipe generation: pending"
+                f"Full recipe generation: {max(completed_generation_times):.2f}s"
+                if completed_generation_times else "Full recipe generation: pending"
             )
         else:
             lines = [
@@ -1008,7 +1008,9 @@ class OpenGLViewer:
                 self.status_message = (
                     f"Prepared LOD{item.level}: {item.name} "
                     f"({item.triangle_count:,} triangles, {item.cpu_bytes / (1024 ** 2):.1f} MiB CPU; "
-                    f"mesh {item.mesh_build_seconds:.2f}s, full recipe {item.full_generation_seconds:.2f}s)"
+                    f"mesh {item.mesh_build_seconds:.2f}s, generation elapsed "
+                    f"{item.generation_elapsed_seconds:.2f}s)"
+
                 )
         if self.progressive_auto:
             self._activate_progressive_lod()
