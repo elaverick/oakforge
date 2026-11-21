@@ -20,14 +20,7 @@ from oakforge.core.geometry import normalize, perpendicular_frame
 from oakforge.core.models import Branch
 from oakforge.core.recipe_engine import RecipeEngine
 from oakforge.tools.registry import create_default_registry
-from oakforge.core.mesh import (
-    FAR_LEAF_PROFILE,
-    MID_LEAF_PROFILE,
-    NEAR_LEAF_PROFILE,
-    MeshData,
-    build_foliage_mesh,
-    build_wood_mesh,
-)
+from oakforge.core.mesh import MeshData, build_foliage_mesh, build_wood_mesh
 from oakforge.core.models import Leaf, TreeModel
 from oakforge.generation import generate_tree, load_recipe
 
