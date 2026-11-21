@@ -314,7 +314,7 @@ def _make_oak_leaves(
             leaf_normals[:, None, None, :], triangle_positions.shape
         )
 
-        # The atlas has sixteen 64x128 oak-leaf variants in a 4x4 layout.
+        # The atlas has sixteen 88x128 oak-leaf variants in a 4x4 layout.
         # A stable ID hash chooses a tile without introducing run-to-run flicker.
         tile_indices = np.fromiter(
             (zlib.crc32(leaf.leaf_id.encode("utf-8")) % 16 for leaf in leaves),
@@ -323,7 +323,7 @@ def _make_oak_leaves(
         )
         tile_columns = tile_indices % 4
         tile_rows_from_top = tile_indices // 4
-        atlas_width = 4 * 64
+        atlas_width = 4 * 88
         atlas_height = 4 * 128
         padding_x = 2.0 / atlas_width
         padding_y = 2.0 / atlas_height
