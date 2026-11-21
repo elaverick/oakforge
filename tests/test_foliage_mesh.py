@@ -46,6 +46,16 @@ class FoliageMeshTests(unittest.TestCase):
         foliage = build_foliage_mesh(self.tree)
         self.assertEqual(foliage.triangle_count, 21)
 
+    def test_runtime_leaf_cards_have_uvs_for_alpha_texture(self):
+        cards = build_foliage_mesh(self.tree, card_mode=True)
+        self.assertEqual(cards.triangle_count, 2)
+        self.assertTrue(cards.uses_leaf_texture)
+        self.assertEqual(len(cards.texcoords), 6 * 2)
+        self.assertEqual(len(cards.texcoords), (len(cards.positions) // 3) * 2)
+        self.assertTrue(
+            np.isfinite(np.frombuffer(cards.texcoords, dtype=np.float32)).all()
+        )
+
     def test_optional_terminal_twigs_are_added_without_structural_limbs(self):
         leaves_only = build_foliage_mesh(self.tree)
         canopy_with_twigs = build_foliage_mesh(self.tree, include_twigs=True)
