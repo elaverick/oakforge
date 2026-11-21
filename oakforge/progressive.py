@@ -201,7 +201,9 @@ class ProgressiveGenerationSession:
         self.engine = RecipeEngine(self.context, create_default_registry())
         self.structural_actions: list[dict[str, Any]] = []
         self.trailing_actions: list[dict[str, Any]] = []
+        self.foliage_prefix_actions: list[dict[str, Any]] = []
         self.foliage_actions: list[dict[str, Any]] = []
+        self.foliage_suffix_actions: list[dict[str, Any]] = []
         self.foliage_disabled_actions: list[dict[str, Any]] = []
         self.foliage_enabled = False
         self.total_leaf_passes = 0
@@ -220,15 +222,24 @@ class ProgressiveGenerationSession:
             if not isinstance(candidate, dict):
                 continue
             then_actions = candidate.get("then", [])
-            loop_action = next(
-                (item["do_while"] for item in then_actions
-                 if isinstance(item, dict) and "do_while" in item),
+            loop_index = next(
+                (
+                    index for index, item in enumerate(then_actions)
+                    if isinstance(item, dict) and "do_while" in item
+                ),
                 None,
             )
-            if loop_action is not None:
+            if loop_index is not None:
+                if sum(
+                    1 for item in then_actions
+                    if isinstance(item, dict) and "do_while" in item
+                ) != 1:
+                    raise ValueError("A progressive foliage branch must contain exactly one do_while")
                 foliage_index = action_index
                 foliage_if = candidate
-                foliage_loop = loop_action
+                foliage_loop = then_actions[loop_index]["do_while"]
+                self.foliage_prefix_actions = list(then_actions[:loop_index])
+                self.foliage_suffix_actions = list(then_actions[loop_index + 1:])
                 break
 
         if foliage_index is None or foliage_if is None or foliage_loop is None:
@@ -251,6 +262,13 @@ class ProgressiveGenerationSession:
                 self.total_leaf_passes = int(self.engine.evaluate(operands[1]))
                 if self.total_leaf_passes < 0:
                     raise ValueError("Foliage pass count must be non-negative")
+                maximum_iterations = foliage_loop.get("max_iterations")
+                if maximum_iterations is not None:
+                    maximum_iterations = int(self.engine.evaluate(maximum_iterations))
+                    if maximum_iterations < self.total_leaf_passes:
+                        raise ValueError(
+                            "Foliage loop max_iterations is smaller than its declared pass count"
+                        )
             else:
                 self.context.values["foliage_status"] = "disabled"
 
@@ -261,6 +279,7 @@ class ProgressiveGenerationSession:
         started = perf_counter()
         self.engine.execute(self.structural_actions)
         if self.foliage_enabled:
+            self.engine.execute(self.foliage_prefix_actions)
             self.context.values["leaf_pass"] = 0
         else:
             self.engine.execute(self.foliage_disabled_actions)
@@ -285,6 +304,8 @@ class ProgressiveGenerationSession:
         """Execute recipe actions after the foliage stage exactly once."""
         if self._finished:
             return
+        if self.foliage_enabled and self.foliage_suffix_actions:
+            self.engine.execute(self.foliage_suffix_actions)
         if self.trailing_actions:
             self.engine.execute(self.trailing_actions)
         self._finished = True
