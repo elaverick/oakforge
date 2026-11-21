@@ -62,8 +62,19 @@ FRAGMENT_SHADER = """#version 330 core
 in vec3 world_normal;
 in vec3 surface_colour;
 out vec4 fragment_colour;
+uniform float lod_fade;
+uniform int lod_transition_role;
 void main()
 {
+    // Both LODs use the same screen-space threshold, so their coverage is
+    // complementary. This avoids transparent sorting and keeps silhouettes
+    // stable while one mesh replaces another.
+    if (lod_transition_role != 2) {
+        vec2 pixel = floor(gl_FragCoord.xy);
+        float threshold = fract(sin(dot(pixel, vec2(12.9898, 78.233))) * 43758.5453);
+        if (lod_transition_role == 0 && threshold < lod_fade) discard;
+        if (lod_transition_role == 1 && threshold >= lod_fade) discard;
+    }
     vec3 normal_direction = normalize(world_normal);
     if (!gl_FrontFacing) normal_direction = -normal_direction;
     vec3 light_direction = normalize(vec3(-0.45, 0.82, 0.36));
@@ -144,6 +155,14 @@ class OpenGLViewer:
         self.canopy_vbo = 0
         self.canopy_vertex_count = 0
         self.canopy_triangle_count = 0
+        self.previous_wood_vao = 0
+        self.previous_wood_vbo = 0
+        self.previous_wood_vertex_count = 0
+        self.previous_canopy_vao = 0
+        self.previous_canopy_vbo = 0
+        self.previous_canopy_vertex_count = 0
+        self.lod_transition_start: float | None = None
+        self.lod_transition_duration = 0.35
         # Preserve completed readings for both canopy modes while only the
         # selected representation remains resident on the GPU.
         self.representation_metrics: dict[str, dict[str, float | int | None]] = {
@@ -284,13 +303,16 @@ class OpenGLViewer:
 
     def _create_shader_program(self, vertex_source: str, fragment_source: str) -> None:
         self.program = self._compile_program(vertex_source, fragment_source)
-        uniform_names = ("model_matrix", "view_matrix", "projection_matrix")
+        uniform_names = (
+            "model_matrix", "view_matrix", "projection_matrix",
+            "lod_fade", "lod_transition_role",
+        )
         self.tree_uniforms = {
             name: int(self.gl.glGetUniformLocation(self.program, name))
             for name in uniform_names
         }
         if any(location < 0 for location in self.tree_uniforms.values()):
-            raise RuntimeError("The tree shader is missing a required matrix uniform")
+            raise RuntimeError("The tree shader is missing a required rendering uniform")
 
     def _create_buffers(self) -> None:
         self.wood_vao = int(self.gl.glGenVertexArrays(1))
@@ -850,7 +872,8 @@ class OpenGLViewer:
                 self.status_message = "Switch to the depth impostor with I to tune footprint size"
         elif key == glfw.KEY_L:
             self.show_leaves = not self.show_leaves
-            self._set_canopy_mode(self.canopy_mode)
+            if self.progressive_worker is None:
+                self._set_canopy_mode(self.canopy_mode)
         elif key == glfw.KEY_W:
             self.wireframe = not self.wireframe
         elif key == glfw.KEY_V:
@@ -974,28 +997,49 @@ class OpenGLViewer:
         if self.progressive_auto:
             self._activate_progressive_lod()
 
-    def _activate_progressive_lod(self, force: bool = False) -> None:
-        """Promote the best ready LOD without ever dropping to a coarser blank."""
+    def _activate_progressive_lod(
+        self,
+        force: bool = False,
+        requested_level: int | None = None,
+    ) -> None:
+        """Promote the best ready LOD without waiting for generation to finish."""
         if not self.progressive_lods:
             return
-        desired = self._desired_progressive_lod()
+        if requested_level is None:
+            desired = self._desired_progressive_lod()
+        else:
+            desired = int(requested_level)
         available = sorted(self.progressive_lods)
         candidates = [level for level in available if level >= desired]
         selected = min(candidates) if candidates else min(available)
-        if not force and selected == self.active_lod:
+        if self.active_lod is not None and selected == self.active_lod:
             return
+
+        # Preserve the outgoing GPU representation for a short dithered
+        # transition. If another LOD arrives mid-transition, retire the older
+        # outgoing pair and transition from the currently visible LOD instead.
+        if self.active_lod is not None:
+            self._release_progressive_transition()
+            self.previous_wood_vao = self.wood_vao
+            self.previous_wood_vbo = self.wood_vbo
+            self.previous_wood_vertex_count = self.wood_vertex_count
+            self.previous_canopy_vao = self.canopy_vao
+            self.previous_canopy_vbo = self.canopy_vbo
+            self.previous_canopy_vertex_count = self.canopy_vertex_count
+            self.gpu_allocations["transition_wood_vbo"] = self.gpu_allocations.pop("wood_vbo", 0)
+            self.gpu_allocations["transition_canopy_vbo"] = self.gpu_allocations.pop("canopy_vbo", 0)
+            self.wood_vao = int(self.gl.glGenVertexArrays(1))
+            self.wood_vbo = int(self.gl.glGenBuffers(1))
+            self.canopy_vao = int(self.gl.glGenVertexArrays(1))
+            self.canopy_vbo = int(self.gl.glGenBuffers(1))
+            self.lod_transition_start = time.perf_counter()
+
         representation = self.progressive_lods[selected]
         self.tree = representation.tree
         self.wood_vertex_count, _ = self._upload_vertex_data(
             self.wood_vao, self.wood_vbo, representation.wood_mesh, "wood_vbo"
         )
         self.wood_triangle_count = self.wood_vertex_count // 3
-        if not self.canopy_vao or not self.canopy_vbo:
-            self.canopy_vao = int(self.gl.glGenVertexArrays(1))
-            self.canopy_vbo = int(self.gl.glGenBuffers(1))
-        self.canopy_vertex_count, _ = self._upload_vertex_data(
-            self.canopy_vao, self.canopy_vbo, representation.foliage_mesh, "canopy_vbo"
-        )
         self.canopy_triangle_count = self.canopy_vertex_count // 3
         self.gpu_allocations["canopy_vbo"] = (
             self.canopy_vertex_count * 9 * 4
@@ -1021,6 +1065,67 @@ class OpenGLViewer:
             f"Active LOD{selected}: {representation.name} "
             f"({self.canopy_triangle_count + self.wood_triangle_count:,} triangles)"
         )
+
+    def _release_progressive_transition(self) -> None:
+        """Release an outgoing LOD's buffers on the OpenGL-owning thread."""
+        gl = self.gl
+        if self.previous_wood_vao:
+            gl.glDeleteVertexArrays(1, [self.previous_wood_vao])
+        if self.previous_wood_vbo:
+            gl.glDeleteBuffers(1, [self.previous_wood_vbo])
+        if self.previous_canopy_vao:
+            gl.glDeleteVertexArrays(1, [self.previous_canopy_vao])
+        if self.previous_canopy_vbo:
+            gl.glDeleteBuffers(1, [self.previous_canopy_vbo])
+        self.previous_wood_vao = 0
+        self.previous_wood_vbo = 0
+        self.previous_wood_vertex_count = 0
+        self.previous_canopy_vao = 0
+        self.previous_canopy_vbo = 0
+        self.previous_canopy_vertex_count = 0
+        self.gpu_allocations.pop("transition_wood_vbo", None)
+        self.gpu_allocations.pop("transition_canopy_vbo", None)
+        self.lod_transition_start = None
+
+    def _draw_progressive_geometry(self) -> None:
+        """Draw current and outgoing LODs with complementary screen-door coverage."""
+        gl = self.gl
+        transition_active = (
+            self.lod_transition_start is not None
+            and self.previous_wood_vao != 0
+        )
+        fade = 1.0
+        if transition_active:
+            elapsed = time.perf_counter() - float(self.lod_transition_start)
+            fade = float(np.clip(elapsed / self.lod_transition_duration, 0.0, 1.0))
+            if fade >= 1.0:
+                self._release_progressive_transition()
+                transition_active = False
+
+        if transition_active:
+            gl.glUniform1f(self.tree_uniforms["lod_fade"], fade)
+            gl.glUniform1i(self.tree_uniforms["lod_transition_role"], 0)
+            gl.glBindVertexArray(self.previous_wood_vao)
+            gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.previous_wood_vertex_count)
+            if self.show_leaves and self.max_depth >= 4:
+                gl.glBindVertexArray(self.previous_canopy_vao)
+                gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.previous_canopy_vertex_count)
+
+            gl.glUniform1i(self.tree_uniforms["lod_transition_role"], 1)
+            gl.glBindVertexArray(self.wood_vao)
+            gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.wood_vertex_count)
+            if self.show_leaves and self.max_depth >= 4:
+                gl.glBindVertexArray(self.canopy_vao)
+                gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.canopy_vertex_count)
+        else:
+            gl.glUniform1f(self.tree_uniforms["lod_fade"], 1.0)
+            gl.glUniform1i(self.tree_uniforms["lod_transition_role"], 2)
+            gl.glBindVertexArray(self.wood_vao)
+            gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.wood_vertex_count)
+            if self.show_leaves and self.max_depth >= 4:
+                gl.glBindVertexArray(self.canopy_vao)
+                gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.canopy_vertex_count)
+        gl.glBindVertexArray(0)
 
     def _on_mouse_button(self, window: Any, button: int, action: int, modifiers: int) -> None:
         if button == self.glfw.MOUSE_BUTTON_LEFT:
@@ -1118,20 +1223,23 @@ class OpenGLViewer:
                     gl.GL_FRONT_AND_BACK, gl.GL_LINE if self.wireframe else gl.GL_FILL
                 )
                 gl.glUseProgram(self.program)
-                gl.glBindVertexArray(self.wood_vao)
-                gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.wood_vertex_count)
-                if self.show_leaves and self.max_depth >= 4:
-                    if self.canopy_mode == "polygons":
-                        gl.glBindVertexArray(self.canopy_vao)
-                        gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.canopy_vertex_count)
-                    elif self.canopy_renderer is not None:
-                        gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
-                        camera_position = self._camera_position()
-                        self.last_selected_views = self.canopy_renderer.draw(
-                            view_projection,
-                            camera_position,
-                            (framebuffer_width, framebuffer_height),
-                        )
+                if self.active_lod is not None:
+                    self._draw_progressive_geometry()
+                else:
+                    gl.glBindVertexArray(self.wood_vao)
+                    gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.wood_vertex_count)
+                    if self.show_leaves and self.max_depth >= 4:
+                        if self.canopy_mode == "polygons":
+                            gl.glBindVertexArray(self.canopy_vao)
+                            gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.canopy_vertex_count)
+                        elif self.canopy_renderer is not None:
+                            gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+                            camera_position = self._camera_position()
+                            self.last_selected_views = self.canopy_renderer.draw(
+                                view_projection,
+                                camera_position,
+                                (framebuffer_width, framebuffer_height),
+                            )
                 gl.glBindVertexArray(0)
                 gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
                 self._end_gpu_query()
@@ -1142,6 +1250,7 @@ class OpenGLViewer:
         finally:
             if self.progressive_worker is not None:
                 self.progressive_worker.close(timeout=0.5)
+            self._release_progressive_transition()
             self._release_canopy_representation()
             self.gpu_telemetry.close()
             if self.gpu_queries:
