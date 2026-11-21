@@ -14,8 +14,8 @@ from PIL import Image
 
 TILE_WIDTH = 88
 TILE_HEIGHT = 128
-ATLAS_COLUMNS = 4
-ATLAS_ROWS = 4
+ATLAS_COLUMNS = 2
+ATLAS_ROWS = 2
 ATLAS_FILENAME = "oak_leaf_atlas.png"
 ATLAS_PATH = Path(__file__).resolve().parents[1] / "assets" / ATLAS_FILENAME
 
