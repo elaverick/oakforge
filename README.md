@@ -4,7 +4,7 @@ OakForge is a small SpeedTree-inspired procedural tree generator. It builds an E
 
 The generator and renderer are deliberately separate. The growth tools produce a renderer-independent tree model; the viewer consumes that model. You can run the recipe interpreter and export geometry without installing the graphics dependencies.
 
-The current English-oak recipe generates one trunk, seven main buttress roots, thirteen lateral surface roots and eleven finer feeder roots for its default seed. Its crown contains eight broad primary scaffold limbs, six upper leaders, 104 secondary boughs, 624 tertiary branches, 4,992 terminal twigs and 1,490 leaf-bearing sprays, carrying 311,136 individual oak leaves. The upper leaders fork into the crown and their descendants are gently steered towards a spread-out upper-crown target, avoiding a single exposed central pole. The coarse trunk, all root tiers, primary limbs, upper leaders and secondary limbs are fused into a continuous polygon surface. Main roots and offshoots can be generated procedurally from a seed or positioned individually in YAML. Use the supplied recipes to inspect the complete tree, an isolated trunk with procedural root networks, or an isolated trunk with manually positioned roots.
+The current English-oak recipe generates one trunk, seven main buttress roots, thirteen lateral surface roots and eleven finer feeder roots for its default seed. Its crown contains eight broad primary scaffold limbs, six upper leaders, 104 secondary boughs, 624 tertiary branches, 4,992 terminal twigs and 1,490 leaf-bearing sprays, carrying 311,136 individual oak leaves in the canonical botanical model. The progressive runtime renderer does not triangulate every source leaf: it selects a bounded, evenly distributed population of two-triangle foliage cards and omits terminal twig/spray tubes. The upper leaders fork into the crown and their descendants are gently steered towards a spread-out upper-crown target, avoiding a single exposed central pole. The coarse trunk, all root tiers, primary limbs, upper leaders and secondary limbs are fused into a continuous polygon surface. Main roots and offshoots can be generated procedurally from a seed or positioned individually in YAML. Use the supplied recipes to inspect the complete tree, an isolated trunk with procedural root networks, or an isolated trunk with manually positioned roots.
 
 ## What is included
 
@@ -49,7 +49,7 @@ From the project root:
 python main.py
 ```
 
-OakForge first constructs the mature structural scaffold through tertiary branches and places deterministic proxy foliage across that framework. It then generates terminal twigs, sprays and individual leaves in the background, preparing progressively denser and more detailed representations. The viewer stays responsive and continues drawing the best available representation while refinement runs.
+OakForge first constructs the mature structural scaffold through tertiary branches and places 3,072 deterministic canopy cards across that framework. It then generates the canonical terminal twigs, sprays and 311,136 source leaves in the background, preparing progressively denser runtime representations. The viewer selects bounded foliage-card populations of 3,072, 8,192, 16,384 and 40,960 leaves for LOD3 through LOD0 respectively; every runtime leaf card is two triangles. The viewer stays responsive and continues drawing the best available representation while refinement runs.
 
 Use another recipe with:
 
@@ -61,10 +61,10 @@ Automatic LOD is selected by camera distance, with a two-metre hysteresis band a
 
 | LOD | Camera distance | Representation |
 |---|---:|---|
-| LOD3 | 46 m and beyond | Mature scaffold through tertiary branches, with 35,520 larger branch-anchored proxy leaves |
-| LOD2 | 26–46 m | Complete branch, twig and spray hierarchy with one-quarter of actual leaf placements, enlarged slightly for canopy coverage |
-| LOD1 | 13–26 m | Complete hierarchy with one-half of actual leaves and a more detailed leaf outline |
-| LOD0 | Under 13 m | Complete hierarchy and all 311,136 fully lobed oak leaves |
+| LOD3 | 46 m and beyond | Fused major scaffold, 3,072 distributed canopy cards; tertiary wood tubes deferred |
+| LOD2 | 26–46 m | Major scaffold plus simplified tertiary tubes, 8,192 two-triangle cards sampled from the first foliage pass |
+| LOD1 | 13–26 m | Major scaffold plus simplified tertiary tubes, 16,384 two-triangle cards sampled from the first two foliage passes |
+| LOD0 | Under 13 m | Major scaffold plus higher-segment tertiary tubes, 40,960 two-triangle cards sampled across the complete source foliage |
 
 If the requested LOD is not ready yet, the viewer keeps the best available representation and never blocks the render loop waiting for the worker. Each transition uses a 0.35-second complementary screen-space dither between the outgoing and incoming meshes, with a two-metre hysteresis band around each distance threshold.
 
