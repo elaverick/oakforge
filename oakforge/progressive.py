@@ -456,7 +456,11 @@ def build_lod_representation(
         2: MID_LEAF_PROFILE,
         1: NEAR_LEAF_PROFILE,
     }
-    leaf_size_scales = {2: 1.20}
+    # Intermediate LODs use fewer real leaves, so enlarge them enough to
+    # preserve a strictly increasing foliage-area budget towards LOD0. LOD3's
+    # scaffold proxies are deliberately larger than source leaves; without
+    # this compensation, LOD2 can look less filled than the farther LOD3.
+    leaf_size_scales = {2: 1.40, 1: 1.08}
     foliage_mesh = build_foliage_mesh(
         lod_tree,
         leaf_profile=leaf_profiles.get(level),
