@@ -17,7 +17,7 @@ LOD indices follow the conventional convention: LOD0 is the closest and most det
 | LOD1 | 13–26 m | Full branch hierarchy including twigs and sprays, with one-eighth of the original leaf placements |
 | LOD0 | Under 13 m | Full branch hierarchy and all generated individual lobed leaves |
 
-The three distance thresholds have a two-metre hysteresis band to reduce LOD oscillation. Distance is the first implementation's proxy for projected size; camera-space projected bounds should replace fixed distances when this becomes a multi-tree scene system.
+The three distance thresholds have a two-metre hysteresis band to reduce LOD oscillation. Representation changes are hard swaps in this first implementation; hysteresis reduces repeated flips but does not provide a temporal cross-fade or dither transition. Distance is the first implementation's proxy for projected size; camera-space projected bounds should replace fixed distances when this becomes a multi-tree scene system.
 
 If the desired LOD is not ready, the viewer continues to use the best available representation. It does not wait for a worker or remove the current geometry before a replacement is uploaded.
 
