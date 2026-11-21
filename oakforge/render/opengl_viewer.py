@@ -1041,10 +1041,13 @@ class OpenGLViewer:
             self.wood_vao, self.wood_vbo, representation.wood_mesh, "wood_vbo"
         )
         self.wood_triangle_count = self.wood_vertex_count // 3
-        self.canopy_triangle_count = self.canopy_vertex_count // 3
-        self.gpu_allocations["canopy_vbo"] = (
-            self.canopy_vertex_count * 9 * 4
+        if not self.canopy_vao or not self.canopy_vbo:
+            self.canopy_vao = int(self.gl.glGenVertexArrays(1))
+            self.canopy_vbo = int(self.gl.glGenBuffers(1))
+        self.canopy_vertex_count, _ = self._upload_vertex_data(
+            self.canopy_vao, self.canopy_vbo, representation.foliage_mesh, "canopy_vbo"
         )
+        self.canopy_triangle_count = self.canopy_vertex_count // 3
         self.active_lod = selected
         self.max_depth = 4
         self.canopy_mode = "polygons"
