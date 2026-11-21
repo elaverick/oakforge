@@ -27,6 +27,7 @@ If the desired LOD is not ready, the viewer continues to use the best available 
 2. It places 17,760 deterministic proxy leaves in compact three-dimensional clusters along the tertiary scaffold, then builds the first wood and foliage meshes. This initial pass is synchronous, but avoids the thousands of terminal branches and 311,136 source leaves.
 3. The viewer opens with LOD3.
 4. A background CPU worker executes the remaining recipe structure for the same seed: terminal twigs, sprays and the fused wood surface are generated once. It then executes one foliage scatter pass at a time. With the default four-pass oak recipe, pass one publishes LOD2 (one-quarter of actual leaves, enlarged 1.2×), pass two publishes LOD1 (one-half of actual leaves), and passes three and four complete LOD0 (all source leaves). Each ready mesh package is published through a bounded queue.
+5. The branch hierarchy and fused wood surface are unchanged by foliage passes. The worker builds the structural wood mesh once and shares that immutable CPU mesh with LOD2, LOD1 and LOD0; only the foliage mesh is rebuilt at each milestone. This reduces repeated CPU mesh work and avoids retaining duplicate wood buffers.
 5. The render thread drains completed packages and performs all OpenGL resource uploads. The CPU worker never calls OpenGL.
 6. Camera distance selects the best ready representation. The renderer retains already-ready LODs so that the user can move in either direction without rebuilding them.
 
@@ -46,7 +47,7 @@ The worker streams foliage-pass milestones but does not yet stream individual br
 ## Threading and lifecycle
 
 - The caller thread owns the initial reduced tree generation and first mesh build.
-- The worker thread owns the remaining structural recipe stages and incremental foliage-pass execution, plus CPU mesh construction for LOD2/1/0.
+- The worker thread owns the remaining structural recipe stages and incremental foliage-pass execution, plus CPU foliage-mesh construction for LOD2/1/0. The unchanged structural wood mesh is built once and shared.
 - The OpenGL-owning thread exclusively owns GL resource creation, upload, drawing and release.
 - Worker errors are surfaced in the viewer while the last uploaded representation remains drawable.
 - The queue is bounded so the worker cannot run arbitrarily far ahead of the viewer.
@@ -55,7 +56,7 @@ The worker streams foliage-pass milestones but does not yet stream individual br
 
 ## Verification
 
-- Unit tests verify initial scaffold structure, same-seed agreement with the full recipe, deterministic cluster placement, packed mesh integrity and worker publication at each foliage-pass milestone.
+- Unit tests verify initial scaffold structure, same-seed agreement with the full recipe, deterministic cluster placement, packed mesh integrity, worker publication at each foliage-pass milestone and structural wood-mesh sharing across foliage LODs.
 - A headless OpenGL smoke test creates the viewer under Xvfb, uploads every LOD level through the production upload path and draws both wood and foliage buffers.
 - The existing complete regression suite continues to cover tree generation, branch attachment, crown shape, root topology, foliage placement, recipe interpretation and the original impostor renderer.
 - GitHub Actions runs on `feature/progressive-tree-generation` and executes both the normal suite and the headless progressive viewer smoke test.
