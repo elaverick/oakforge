@@ -195,6 +195,7 @@ def _build_implicit_wood_surface(
     root_vertical_scale: float,
     root_thickness_scale: float,
     padding: float,
+    root_tip_radius_minimum: float,
 ) -> MeshData:
     """Convert connected trunk, root and limb skeletons into one smooth polygon surface."""
     if not branches:
@@ -220,6 +221,16 @@ def _build_implicit_wood_surface(
     for branch in branches:
         branch_points = [np.asarray(point, dtype=np.float64) for point in branch.points]
         branch_radii = [float(radius) for radius in branch.radii]
+        if branch.role == "root" and root_tip_radius_minimum > 0.0:
+            # A very fine natural root tip can fall below one voxel in a distant LOD.
+            # Add thickness progressively towards the endpoint instead of hard-clamping
+            # the whole distal section, preserving the root's tapered silhouette.
+            missing_tip_radius = max(0.0, root_tip_radius_minimum - branch_radii[-1])
+            last_sample = max(1, len(branch_radii) - 1)
+            branch_radii = [
+                radius + missing_tip_radius * (sample_index / last_sample) ** 2
+                for sample_index, radius in enumerate(branch_radii)
+            ]
         branch_maximum_radius = max(branch_radii)
         branch_vertical_scale = float(branch.metadata.get("cross_section_vertical_scale", root_vertical_scale))
         branch_thickness_scale = float(branch.metadata.get("cross_section_thickness_scale", root_thickness_scale))
@@ -378,11 +389,17 @@ def build_wood_surface(context: GenerationContext, arguments: dict[str, Any]) ->
     root_vertical_scale = float(arguments.get("root_vertical_scale", 1.08))
     root_thickness_scale = float(arguments.get("root_thickness_scale", 0.94))
     padding = float(arguments.get("padding", 0.35))
-    if voxel_size <= 0.0 or blend_width <= 0.0 or padding < 0.0:
-        raise ValueError("Wood-surface voxel_size and blend_width must be positive; padding cannot be negative")
+    root_tip_radius_minimum = float(arguments.get("root_tip_radius_minimum", 0.0))
+    if (voxel_size <= 0.0 or blend_width <= 0.0 or padding < 0.0
+            or root_tip_radius_minimum < 0.0):
+        raise ValueError(
+            "Wood-surface voxel_size and blend_width must be positive; padding and "
+            "root_tip_radius_minimum cannot be negative"
+        )
 
     mesh = _build_implicit_wood_surface(
-        branches, voxel_size, blend_width, root_vertical_scale, root_thickness_scale, padding
+        branches, voxel_size, blend_width, root_vertical_scale, root_thickness_scale,
+        padding, root_tip_radius_minimum,
     )
     return {
         "mesh": mesh,
@@ -391,4 +408,5 @@ def build_wood_surface(context: GenerationContext, arguments: dict[str, Any]) ->
         "triangle_count": mesh.triangle_count,
         "root_vertical_scale": root_vertical_scale,
         "root_thickness_scale": root_thickness_scale,
+        "root_tip_radius_minimum": root_tip_radius_minimum,
     }
