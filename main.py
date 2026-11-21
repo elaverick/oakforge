@@ -7,6 +7,7 @@ import hashlib
 import json
 import subprocess
 import sys
+from time import perf_counter
 from pathlib import Path
 
 from oakforge.core.mesh import build_tree_mesh, write_obj
@@ -160,13 +161,16 @@ def main() -> int:
     if not arguments.legacy_impostor_viewer:
         # A coarse scaffold with branch-anchored leaf clusters is ready before
         # the full recipe and its detailed foliage are constructed.
+        initial_build_started = perf_counter()
         coarse_tree = generate_coarse_tree(recipe_path)
         initial_lod = build_lod_representation(coarse_tree, 3)
+        initial_build_seconds = perf_counter() - initial_build_started
         generation_seed = int(coarse_tree.metadata.get("seed", 1))
         worker = ProgressiveTreeWorker(recipe_path, seed_override=generation_seed)
         print(
             f"Initial tree ready: LOD3, {len(coarse_tree.branches):,} branches, "
-            f"{len(coarse_tree.leaves):,} clustered leaves"
+            f"{len(coarse_tree.leaves):,} clustered leaves "
+            f"(ready in {initial_build_seconds:.2f}s)"
         )
         print("Building LOD2, LOD1 and LOD0 in the background; the viewer remains responsive.")
 
