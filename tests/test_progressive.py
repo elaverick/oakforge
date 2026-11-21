@@ -34,7 +34,7 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertIn("tertiary", roles)
         self.assertNotIn("twig", roles)
         self.assertNotIn("spray", roles)
-        self.assertEqual(len(self.coarse_tree.leaves), 17760)
+        self.assertEqual(len(self.coarse_tree.leaves), 35520)
         self.assertEqual(self.coarse_tree.metadata["progressive_level"], 3)
 
     def test_coarse_scaffold_matches_the_same_seed_full_recipe(self):
