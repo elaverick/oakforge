@@ -64,70 +64,77 @@ def build_cluster_leaves(
     target_count: int,
     branch_roles: tuple[str, ...] = ("primary", "leader", "secondary", "tertiary"),
     seed_offset: int = 0,
+    leaf_size: float = 0.25,
 ) -> list[Leaf]:
-    """Create deterministic lobed-leaf clusters distributed along scaffold limbs.
+    """Create evenly distributed, deterministic canopy-card anchors.
 
-    These proxy leaves are anchored to the actual generated branches. They are
-    a low-cost distant representation, not a replacement for botanical foliage
-    placement in the full model.
+    The old proxy pass placed 48 leaves on a small subset of scaffold limbs.
+    The runtime version spreads a handful of larger cluster cards over the whole
+    eligible branch hierarchy. This keeps the far canopy volumetric without
+    carrying tens of thousands of independent leaf polygons.
     """
     candidates = [branch for branch in tree.branches if branch.role in branch_roles]
     if not candidates or target_count <= 0:
         return []
+    if leaf_size <= 0.0:
+        raise ValueError("leaf_size must be greater than zero")
 
     rng = np.random.default_rng(int(tree.metadata.get("seed", 1)) + seed_offset)
-    # Spread a bounded number of anchors across the entire branch set rather
-    # than exhausting an early section of the hierarchy and leaving crown gaps.
-    # Six compact whorls along each eligible scaffold limb fill the crown
-    # volume more evenly than three widely separated anchor points.
-    anchors_per_branch = 6
-    leaves_per_anchor = 8
-    maximum_branches = max(1, math.ceil(target_count / (anchors_per_branch * leaves_per_anchor)))
-    selected_indices = set(np.linspace(
-        0, len(candidates) - 1, min(len(candidates), maximum_branches), dtype=int
-    ).tolist())
+    selected_count = min(len(candidates), target_count)
+    selected_indices = np.linspace(
+        0, len(candidates) - 1, selected_count, dtype=np.int64
+    )
+    base_leaves_per_branch = target_count // selected_count
+    extra_leaves = target_count % selected_count
     leaves: list[Leaf] = []
-    for branch_index, branch in enumerate(candidates):
-        if branch_index not in selected_indices:
-            continue
-        for anchor_index, proportion in enumerate((0.08, 0.24, 0.40, 0.60, 0.76, 0.92)):
-            if len(leaves) >= target_count:
-                return leaves
-            tangent = normalize(branch.tangent_at(proportion), (0.0, 1.0, 0.0))
-            side_axis, second_axis = perpendicular_frame(tangent)
+    world_up = np.array([0.0, 1.0, 0.0], dtype=np.float64)
+
+    for selected_order, branch_index in enumerate(selected_indices):
+        branch = candidates[int(branch_index)]
+        branch_leaf_count = base_leaves_per_branch + (
+            1 if selected_order < extra_leaves else 0
+        )
+        tangent = normalize(branch.tangent_at(0.5), (0.0, 1.0, 0.0))
+        side_axis, second_axis = perpendicular_frame(tangent)
+        for anchor_index in range(branch_leaf_count):
+            if branch_leaf_count == 1:
+                proportion = 0.5
+            else:
+                proportion = 0.16 + 0.68 * (
+                    (anchor_index + 0.5) / branch_leaf_count
+                )
+            proportion += float(rng.uniform(-0.035, 0.035))
+            proportion = float(np.clip(proportion, 0.08, 0.92))
             centre = branch.point_at(proportion)
-            base_angle = float(rng.uniform(0.0, math.tau))
-            for cluster_index in range(leaves_per_anchor):
-                if len(leaves) >= target_count:
-                    return leaves
-                angle = base_angle + cluster_index * (math.tau / leaves_per_anchor)
-                radial = normalize(
-                    side_axis * math.cos(angle) + second_axis * math.sin(angle)
-                )
-                radial += rng.normal(0.0, 0.16, size=3)
-                radial = normalize(radial, side_axis)
-                base = centre + radial * float(rng.uniform(0.06, 0.20))
-                base += np.array([0.0, float(rng.uniform(-0.05, 0.06)), 0.0])
-                growth = normalize(
-                    tangent * 0.34 + radial * 0.48
-                    + np.array([0.0, 0.28, 0.0])
-                    + rng.normal(0.0, 0.18, size=3)
-                )
-                width_hint = radial + rng.normal(0.0, 0.22, size=3)
-                width_hint -= growth * float(np.dot(width_hint, growth))
-                width = normalize(width_hint, second_axis)
-                scale = float(rng.uniform(0.78, 1.18))
-                variation = float(rng.uniform(-0.045, 0.045))
-                leaves.append(Leaf(
-                    leaf_id=f"cluster_{branch.branch_id}_{anchor_index}_{cluster_index}",
-                    base_position=base,
-                    growth_direction=growth,
-                    width_direction=width,
-                    length=0.25 * scale,
-                    width=0.25 * 0.70 * scale,
-                    colour_variation=np.array([variation * 0.58, variation, rng.uniform(-0.012, 0.012)]),
-                ))
+            angle = float(rng.uniform(0.0, math.tau))
+            radial = normalize(
+                side_axis * math.cos(angle) + second_axis * math.sin(angle)
+            )
+            radial = normalize(radial + rng.normal(0.0, 0.14, size=3), side_axis)
+            base = centre + radial * float(rng.uniform(0.04, 0.14))
+            base += world_up * float(rng.uniform(-0.035, 0.055))
+            growth = normalize(
+                tangent * 0.30 + radial * 0.52 + world_up * 0.28
+                + rng.normal(0.0, 0.16, size=3)
+            )
+            width_hint = radial + rng.normal(0.0, 0.20, size=3)
+            width_hint -= growth * float(np.dot(width_hint, growth))
+            width = normalize(width_hint, second_axis)
+            scale = float(rng.uniform(0.88, 1.12))
+            variation = float(rng.uniform(-0.045, 0.045))
+            leaves.append(Leaf(
+                leaf_id=f"cluster_{branch.branch_id}_{anchor_index}",
+                base_position=base,
+                growth_direction=growth,
+                width_direction=width,
+                length=leaf_size * scale,
+                width=leaf_size * 0.70 * scale,
+                colour_variation=np.array([
+                    variation * 0.58, variation, rng.uniform(-0.012, 0.012)
+                ]),
+            ))
     return leaves
+
 
 
 def generate_coarse_tree(recipe_path: str | Path, seed_override: int | None = None) -> TreeModel:
@@ -179,7 +186,9 @@ def generate_coarse_tree(recipe_path: str | Path, seed_override: int | None = No
         # The top-level for/if actions after the growth loop create sprays and
         # full leaf populations. Both are deliberately deferred.
     tree = generate_tree(recipe)
-    tree.leaves = build_cluster_leaves(tree, target_count=35520, seed_offset=3)
+    tree.leaves = build_cluster_leaves(
+        tree, target_count=3072, seed_offset=3, leaf_size=0.35
+    )
     tree.metadata = dict(tree.metadata)
     tree.metadata.update({
         "progressive_level": 3,
@@ -450,28 +459,34 @@ def build_lod_representation(
             tree, level, leaf_population_pre_sampled=leaf_population_pre_sampled
         ) if level < 3 else tree
     )
-    wood_mesh = shared_wood_mesh if shared_wood_mesh is not None else build_wood_mesh(lod_tree)
-    leaf_profiles = {
-        3: FAR_LEAF_PROFILE,
-        2: MID_LEAF_PROFILE,
-        1: NEAR_LEAF_PROFILE,
-    }
-    # Intermediate LODs use fewer real leaves, so enlarge them enough to
-    # preserve a strictly increasing foliage-area budget towards LOD0. LOD3's
-    # scaffold proxies are deliberately larger than source leaves; without
-    # this compensation, LOD2 can look less filled than the farther LOD3.
-    leaf_size_scales = {2: 1.34, 1: 1.08}
+    # The fused bole and major scaffold are shared by all levels. Fine branch
+    # tubes are resampled and terminal twigs/sprays are replaced by leaf cards.
+    branch_depths = {3: 2, 2: 3, 1: 3, 0: 3}
+    branch_segments = {3: 3, 2: 4, 1: 4, 0: 6}
+    wood_mesh = shared_wood_mesh if shared_wood_mesh is not None else build_wood_mesh(
+        lod_tree,
+        radial_sides=8,
+        include_terminal_twigs=False,
+        max_branch_depth=branch_depths[level],
+        max_branch_segments=branch_segments[level],
+    )
+
+    # Runtime leaf cards use two triangles each. The leaf budgets are chosen so
+    # the total represented leaf surface area rises with each finer LOD.
+    leaf_budgets = {3: 3072, 2: 8192, 1: 16384, 0: 40960}
+    leaf_size_scales = {3: 1.0, 2: 1.80, 1: 1.35, 0: 1.0}
     foliage_mesh = build_foliage_mesh(
         lod_tree,
-        leaf_profile=leaf_profiles.get(level),
-        leaf_size_scale=leaf_size_scales.get(level, 1.0),
+        leaf_size_scale=leaf_size_scales[level],
+        max_leaf_count=leaf_budgets[level],
+        card_mode=True,
     )
     mesh_build_seconds = perf_counter() - build_started
     names = {
-        0: "Detailed foliage",
-        1: "Full shoots · one-half lobed foliage",
-        2: "Fine shoots · one-quarter enlarged foliage",
-        3: "Tertiary scaffold · clustered foliage",
+        0: "Budgeted leaf cards · highest density",
+        1: "Budgeted leaf cards · medium-high density",
+        2: "Budgeted leaf cards · medium density",
+        3: "Scaffold · distributed canopy clusters",
     }
     return ProgressiveLOD(
         level, names[level], lod_tree, wood_mesh, foliage_mesh,
