@@ -199,6 +199,22 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertLess(area_lod2, area_lod1)
         self.assertLess(area_lod1, area_lod0)
 
+    def test_runtime_leaf_cards_have_consistent_winding_and_normals(self):
+        mesh = build_foliage_mesh(
+            self.coarse_tree, max_leaf_count=32, card_mode=True
+        )
+        positions = np.frombuffer(mesh.positions, dtype=np.float32).reshape(-1, 3, 3)
+        normals = np.frombuffer(mesh.normals, dtype=np.float32).reshape(-1, 3, 3)
+        geometric_normals = np.cross(
+            positions[:, 1] - positions[:, 0],
+            positions[:, 2] - positions[:, 0],
+        )
+        average_normals = normals.mean(axis=1)
+        self.assertTrue(
+            np.all(np.einsum("ij,ij->i", geometric_normals, average_normals) > 0.0),
+            "Two-triangle leaf cards must face the same direction as their vertex normals",
+        )
+
     def test_runtime_lods_obey_per_tree_geometry_budgets(self):
         expected_leaf_counts = {3: 3072, 2: 8192, 1: 16384, 0: 40960}
         representations = {
