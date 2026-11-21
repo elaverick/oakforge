@@ -31,6 +31,14 @@ jobs:
         run: |
           mkdir -p build
           python -m oakforge.geometry_budget --instances 16 --output-dir build/runtime-oak | tee build/runtime-geometry-budget.json
+      - name: Publish runtime LOD mesh package
+        uses: actions/upload-artifact@v4
+        with:
+          name: oakforge-runtime-lod-meshes
+          path: |
+            build/runtime-geometry-budget.json
+            build/runtime-oak/
+          if-no-files-found: error
       - name: Smoke-test progressive LOD uploads and draws
         run: xvfb-run -a env OAKFORGE_PROGRESSIVE_GL_SMOKE=1 python -m unittest discover -s tests -p test_progressive_runtime_gl.py -v
       - name: Bake English oak depth impostor
@@ -41,9 +49,11 @@ jobs:
         run: |
           xvfb-run -a python -m oakforge.render.impostor --config configs/english_oak.yaml --output build/comparison/leaves-only --views 8 --tile-size 512 --layers 3 --columns 8
           xvfb-run -a python -m oakforge.render.impostor --config configs/english_oak.yaml --output build/comparison/with-twigs --views 8 --tile-size 512 --columns 8 --include-twigs
-      - name: Upload runtime LOD meshes, geometry budget and impostor comparisons
+      - name: Publish offline canopy impostor comparisons
         uses: actions/upload-artifact@v4
         with:
-          name: english-oak-runtime-assets
-          path: build/
+          name: oakforge-canopy-impostor-bakes
+          path: |
+            build/impostor/
+            build/comparison/
           if-no-files-found: error
