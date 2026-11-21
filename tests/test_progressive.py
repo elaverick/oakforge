@@ -37,7 +37,7 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertEqual(len(self.coarse_tree.leaves), 35520)
         self.assertEqual(self.coarse_tree.metadata["progressive_level"], 3)
 
-    def test_far_lod_fuses_every_root_tier_into_the_bole(self):
+    def test_far_lod_fuses_roots_and_major_scaffold_limbs(self):
         surface = self.coarse_tree.metadata.get("wood_surface")
         self.assertIsInstance(surface, dict)
         self.assertGreater(surface["triangle_count"], 1000)
@@ -56,10 +56,21 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertGreaterEqual(
             surface["root_tip_radius_minimum"], surface["voxel_size"] * 1.25
         )
-        primary_limb = next(
-            branch for branch in self.coarse_tree.branches if branch.role == "primary"
+        major_limb_ids = {
+            branch.branch_id
+            for branch in self.coarse_tree.branches
+            if branch.role in {"primary", "leader", "secondary"}
+        }
+        self.assertTrue(
+            major_limb_ids.issubset(fused_branch_ids),
+            "LOD3 must retain the fused major-limb surface used by refined LODs",
         )
-        self.assertNotIn(primary_limb.branch_id, fused_branch_ids)
+        full_surface_ids = set(self.full_tree.metadata["wood_surface"]["branch_ids"])
+        self.assertEqual(
+            fused_branch_ids,
+            full_surface_ids,
+            "LOD3 and refined LODs must use the same fused trunk/root/major-limb network",
+        )
 
     def test_coarse_scaffold_matches_the_same_seed_full_recipe(self):
         full_by_id = {branch.branch_id: branch for branch in self.full_tree.branches}
@@ -70,6 +81,9 @@ class ProgressiveTreeTests(unittest.TestCase):
             self.assertEqual(len(branch.points), len(expected.points))
             np.testing.assert_allclose(
                 np.asarray(branch.points), np.asarray(expected.points), atol=1e-9
+            )
+            np.testing.assert_allclose(
+                np.asarray(branch.radii), np.asarray(expected.radii), atol=1e-9
             )
 
     def test_cluster_leaf_placement_is_seed_deterministic(self):
