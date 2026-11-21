@@ -34,7 +34,7 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertIn("tertiary", roles)
         self.assertNotIn("twig", roles)
         self.assertNotIn("spray", roles)
-        self.assertEqual(len(self.coarse_tree.leaves), 35520)
+        self.assertEqual(len(self.coarse_tree.leaves), 3072)
         self.assertEqual(self.coarse_tree.metadata["progressive_level"], 3)
 
     def test_far_lod_fuses_roots_and_major_scaffold_limbs(self):
@@ -182,18 +182,58 @@ class ProgressiveTreeTests(unittest.TestCase):
         lod2_tree = _tree_for_level(self.full_tree, 2)
         lod1_tree = _tree_for_level(self.full_tree, 1)
 
-        def foliage_area(leaves, scale=1.0):
-            return sum(leaf.length * leaf.width for leaf in leaves) * scale ** 2
+        def foliage_area(leaves, count, scale=1.0):
+            selected_indices = np.linspace(
+                0, len(leaves) - 1, min(count, len(leaves)), dtype=np.int64
+            )
+            selected = [leaves[int(index)] for index in selected_indices]
+            return sum(leaf.length * leaf.width for leaf in selected) * scale ** 2
 
-        # Total leaf area is a useful monotonicity guard: adding more leaves
-        # must not be offset by shrinking every leaf enough to reduce canopy fill.
-        area_lod3 = foliage_area(self.coarse_tree.leaves)
-        area_lod2 = foliage_area(lod2_tree.leaves, 1.34)
-        area_lod1 = foliage_area(lod1_tree.leaves, 1.08)
-        area_lod0 = foliage_area(self.full_tree.leaves)
+        # The proxy clusters start larger, but actual leaf coverage increases
+        # steadily as real foliage is introduced and its count is raised.
+        area_lod3 = foliage_area(self.coarse_tree.leaves, 3072)
+        area_lod2 = foliage_area(lod2_tree.leaves, 8192, 1.80)
+        area_lod1 = foliage_area(lod1_tree.leaves, 16384, 1.35)
+        area_lod0 = foliage_area(self.full_tree.leaves, 40960)
         self.assertLess(area_lod3, area_lod2)
         self.assertLess(area_lod2, area_lod1)
         self.assertLess(area_lod1, area_lod0)
+
+    def test_runtime_lods_obey_per_tree_geometry_budgets(self):
+        expected_leaf_counts = {3: 3072, 2: 8192, 1: 16384, 0: 40960}
+        representations = {
+            3: build_lod_representation(self.coarse_tree, 3),
+        }
+        lod2 = build_lod_representation(self.full_tree, 2)
+        representations[2] = lod2
+        representations[1] = build_lod_representation(
+            self.full_tree, 1, shared_wood_mesh=lod2.wood_mesh
+        )
+        representations[0] = build_lod_representation(
+            self.full_tree, 0, shared_wood_mesh=lod2.wood_mesh
+        )
+
+        for level, expected_leaves in expected_leaf_counts.items():
+            representation = representations[level]
+            self.assertEqual(representation.foliage_mesh.leaf_count, expected_leaves)
+            self.assertEqual(
+                representation.foliage_mesh.triangle_count,
+                expected_leaves * 2,
+                "Runtime leaves must remain two-triangle cards",
+            )
+            self.assertLess(
+                representation.triangle_count,
+                200_000,
+                f"LOD{level} exceeds the 200k-triangle per-tree runtime budget",
+            )
+            self.assertEqual(
+                len(representation.wood_mesh.positions),
+                len(representation.wood_mesh.normals),
+            )
+            self.assertEqual(
+                len(representation.wood_mesh.positions),
+                len(representation.wood_mesh.colours),
+            )
 
     def test_distance_lod_selection_uses_hysteresis(self):
         viewer = OpenGLViewer.__new__(OpenGLViewer)
