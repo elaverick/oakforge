@@ -61,7 +61,7 @@ Automatic LOD is selected by camera distance, with a two-metre hysteresis band a
 
 | LOD | Camera distance | Representation |
 |---|---:|---|
-| LOD3 | 46 m and beyond | Mature scaffold through tertiary branches, with 17,760 larger branch-anchored proxy leaves |
+| LOD3 | 46 m and beyond | Mature scaffold through tertiary branches, with 35,520 larger branch-anchored proxy leaves |
 | LOD2 | 26–46 m | Complete branch, twig and spray hierarchy with one-quarter of actual leaf placements, enlarged slightly for canopy coverage |
 | LOD1 | 13–26 m | Complete hierarchy with one-half of actual leaves and a more detailed leaf outline |
 | LOD0 | Under 13 m | Complete hierarchy and all 311,136 fully lobed oak leaves |
