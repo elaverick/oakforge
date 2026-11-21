@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from array import array
 from dataclasses import dataclass, field
+import zlib
 from typing import Iterable
+from pathlib import Path
 
 import numpy as np
 
@@ -20,9 +22,11 @@ class MeshData:
     positions: array = field(default_factory=lambda: array("f"))
     normals: array = field(default_factory=lambda: array("f"))
     colours: array = field(default_factory=lambda: array("f"))
+    texcoords: array = field(default_factory=lambda: array("f"))
     # Source and retained leaf counts make geometry-budget reports explicit.
     leaf_count: int = 0
     source_leaf_count: int = 0
+    uses_leaf_texture: bool = False
 
     @property
     def triangle_count(self) -> int:
@@ -44,6 +48,7 @@ class MeshData:
             self.positions.extend(float(component) for component in position)
             self.normals.extend(float(component) for component in normal)
             self.colours.extend(colour_tuple)
+            self.texcoords.extend((0.0, 0.0))
 
 
 
@@ -287,31 +292,70 @@ def _make_oak_leaves(
     colour_variations = np.asarray([leaf.colour_variation for leaf in leaves], dtype=np.float32)
 
     if card_mode:
-        # Runtime foliage cards use a pointed four-corner leaf silhouette. Two
-        # triangles replace the 21-triangle hero leaf while retaining independent
-        # orientation, width, colour variation and three-dimensional placement.
-        centre_positions = base_positions + growth_directions * (leaf_lengths[:, None] * 0.52)
-        half_widths = leaf_widths[:, None] * 0.78
-        left_corners = centre_positions + width_directions * half_widths
-        right_corners = centre_positions - width_directions * half_widths
-        tip_positions = base_positions + growth_directions * leaf_lengths[:, None]
+        # A rectangular two-triangle card carries an alpha-cutout oak-leaf
+        # silhouette. The texture, rather than a diamond-shaped polygon, defines
+        # the lobed margin. Cards remain independently oriented in 3D.
+        base_centres = base_positions - growth_directions * (leaf_lengths[:, None] * 0.10)
+        tip_centres = base_positions + growth_directions * (leaf_lengths[:, None] * 0.90)
+        half_widths = width_directions * (leaf_widths[:, None] * 0.56)
+        base_left = base_centres - half_widths
+        base_right = base_centres + half_widths
+        tip_left = tip_centres - half_widths
+        tip_right = tip_centres + half_widths
         triangle_positions = np.stack((
-            np.stack((base_positions, tip_positions, left_corners), axis=1),
-            np.stack((base_positions, right_corners, tip_positions), axis=1),
+            np.stack((base_left, tip_left, tip_right), axis=1),
+            np.stack((base_left, tip_right, base_right), axis=1),
         ), axis=1)
+
         leaf_normals = np.cross(growth_directions, width_directions)
         normal_lengths = np.linalg.norm(leaf_normals, axis=1, keepdims=True)
         leaf_normals = leaf_normals / np.maximum(normal_lengths, 1e-8)
         triangle_normals = np.broadcast_to(
             leaf_normals[:, None, None, :], triangle_positions.shape
         )
-        leaf_colours = np.clip(LEAF_BASE_COLOUR + colour_variations, 0.06, 0.85)
+
+        # The atlas has sixteen 64x128 oak-leaf variants in a 4x4 layout.
+        # A stable ID hash chooses a tile without introducing run-to-run flicker.
+        tile_indices = np.fromiter(
+            (zlib.crc32(leaf.leaf_id.encode("utf-8")) % 16 for leaf in leaves),
+            dtype=np.int32,
+            count=len(leaves),
+        )
+        tile_columns = tile_indices % 4
+        tile_rows_from_top = tile_indices // 4
+        atlas_width = 4 * 64
+        atlas_height = 4 * 128
+        padding_x = 2.0 / atlas_width
+        padding_y = 2.0 / atlas_height
+        u_min = tile_columns.astype(np.float32) / 4.0 + padding_x
+        u_max = (tile_columns.astype(np.float32) + 1.0) / 4.0 - padding_x
+        gl_rows_from_bottom = (3 - tile_rows_from_top).astype(np.float32)
+        v_min = gl_rows_from_bottom / 4.0 + padding_y
+        v_max = (gl_rows_from_bottom + 1.0) / 4.0 - padding_y
+
+        triangle_uvs = np.stack((
+            np.stack((
+                np.stack((u_min, v_min), axis=1),
+                np.stack((u_min, v_max), axis=1),
+                np.stack((u_max, v_max), axis=1),
+            ), axis=1),
+            np.stack((
+                np.stack((u_min, v_min), axis=1),
+                np.stack((u_max, v_max), axis=1),
+                np.stack((u_max, v_min), axis=1),
+            ), axis=1),
+        ), axis=1)
+        # Texture colour supplies the leaf's botanical green; vertex colour
+        # introduces only subtle per-leaf tint variation.
+        leaf_tints = np.clip(0.96 + colour_variations * 1.8, 0.78, 1.12)
         triangle_colours = np.broadcast_to(
-            leaf_colours[:, None, None, :], triangle_positions.shape
+            leaf_tints[:, None, None, :], triangle_positions.shape
         )
         _append_float_buffer(mesh.positions, triangle_positions)
         _append_float_buffer(mesh.normals, triangle_normals)
         _append_float_buffer(mesh.colours, triangle_colours)
+        _append_float_buffer(mesh.texcoords, triangle_uvs)
+        mesh.uses_leaf_texture = True
         return
 
     # The detailed profile remains available to the offline impostor baker and
@@ -440,18 +484,46 @@ def build_tree_mesh(tree: TreeModel, radial_sides: int = 16) -> MeshData:
     return mesh
 
 def write_obj(mesh: MeshData, file_path: str) -> None:
-    """Write the generated triangles to an OBJ file for external inspection."""
+    """Write generated triangles, normals and optional atlas UVs to OBJ."""
     positions = np.asarray(mesh.positions, dtype=np.float32).reshape(-1, 3)
     normals = np.asarray(mesh.normals, dtype=np.float32).reshape(-1, 3)
     colours = np.asarray(mesh.colours, dtype=np.float32).reshape(-1, 3)
+    has_uvs = len(mesh.texcoords) == len(positions) * 2
+    texcoords = (
+        np.asarray(mesh.texcoords, dtype=np.float32).reshape(-1, 2)
+        if has_uvs else None
+    )
+    material_name = Path(file_path).stem + ".mtl"
     with open(file_path, "w", encoding="utf-8") as output_file:
         output_file.write("# OakForge generated oak tree\n")
+        if mesh.uses_leaf_texture and has_uvs:
+            output_file.write(f"mtllib {material_name}\nusemtl OakLeaf\n")
         for position, colour in zip(positions, colours):
             output_file.write("v %.6f %.6f %.6f %.4f %.4f %.4f\n" % (*position, *colour))
+        if texcoords is not None:
+            for uv in texcoords:
+                output_file.write("vt %.6f %.6f\n" % tuple(uv))
         for normal in normals:
             output_file.write("vn %.6f %.6f %.6f\n" % tuple(normal))
         for triangle_start in range(0, len(positions), 3):
             first = triangle_start + 1
             second = triangle_start + 2
             third = triangle_start + 3
-            output_file.write(f"f {first}//{first} {second}//{second} {third}//{third}\n")
+            if texcoords is not None:
+                output_file.write(
+                    f"f {first}/{first}/{first} {second}/{second}/{second} {third}/{third}/{third}\n"
+                )
+            else:
+                output_file.write(f"f {first}//{first} {second}//{second} {third}//{third}\n")
+
+    if mesh.uses_leaf_texture and has_uvs:
+        material_path = Path(file_path).with_suffix(".mtl")
+        material_path.write_text(
+            "newmtl OakLeaf\n"
+            "Ka 1.0 1.0 1.0\n"
+            "Kd 1.0 1.0 1.0\n"
+            "d 1.0\n"
+            "illum 1\n"
+            "map_Kd oak_leaf_atlas.png\n",
+            encoding="utf-8",
+        )
