@@ -37,6 +37,30 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertEqual(len(self.coarse_tree.leaves), 35520)
         self.assertEqual(self.coarse_tree.metadata["progressive_level"], 3)
 
+    def test_far_lod_fuses_every_root_tier_into_the_bole(self):
+        surface = self.coarse_tree.metadata.get("wood_surface")
+        self.assertIsInstance(surface, dict)
+        self.assertGreater(surface["triangle_count"], 1000)
+
+        fused_branch_ids = set(surface["branch_ids"])
+        trunk = next(branch for branch in self.coarse_tree.branches if branch.role == "trunk")
+        roots = [branch for branch in self.coarse_tree.branches if branch.role == "root"]
+        self.assertGreater(len(roots), 7)
+        self.assertIn(trunk.branch_id, fused_branch_ids)
+        self.assertTrue(
+            {branch.branch_id for branch in roots}.issubset(fused_branch_ids),
+            "Every primary, lateral and feeder root must join the fused basal surface",
+        )
+
+        # The distant implicit surface must resolve root tips beyond a single voxel.
+        self.assertGreaterEqual(
+            surface["root_tip_radius_minimum"], surface["voxel_size"] * 1.25
+        )
+        primary_limb = next(
+            branch for branch in self.coarse_tree.branches if branch.role == "primary"
+        )
+        self.assertNotIn(primary_limb.branch_id, fused_branch_ids)
+
     def test_coarse_scaffold_matches_the_same_seed_full_recipe(self):
         full_by_id = {branch.branch_id: branch for branch in self.full_tree.branches}
         for branch in self.coarse_tree.branches:
