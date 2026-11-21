@@ -16,7 +16,7 @@ To recover after a conversation interruption, download and extract `OakForge_bra
 
 The progressive runtime implementation is under active development on the dedicated branch `feature/progressive-tree-generation`, based on the then-current depth-impostor LOD branch. The default viewer path is now designed to show a reduced tree first and refine it in the background:
 
-- LOD3 builds the trunk/root scaffold through tertiary branches and 17,760 deterministic branch-anchored proxy leaves.
+- LOD3 builds the trunk/root scaffold through tertiary branches and 35,520 deterministic branch-anchored proxy leaves.
 - LOD2 uses the complete branch hierarchy, including twigs and sprays, with one-quarter of the 311,136 actual leaf placements enlarged 1.2×.
 - LOD1 uses the complete hierarchy with one-half of actual leaf placements and a more detailed leaf outline.
 - LOD0 uses the complete hierarchy and all 311,136 actual leaves with the full oak-lobed profile.
