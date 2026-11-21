@@ -228,7 +228,21 @@ def create_child_branches(
         if isinstance(crown_envelope, dict):
             centreline = _fit_to_crown_envelope(centreline, crown_envelope, crown_inset)
 
-        starting_radius = max(parent.radius_at(branch_position) * radius_scale, minimum_base_radius)
+        # Child calibre follows the parent's local *structural* radius, not its
+        # fully tapered radius at the attachment point. The latter can be close
+        # to zero near a parent tip and compounds across generations (for example
+        # trunk -> primary -> secondary -> tertiary), producing limbs that appear
+        # to collapse between LODs even though the recipe's radius scales are
+        # botanically reasonable. Use the parent radius profile's robust upper
+        # section as the reference while retaining a local contribution so
+        # branches attached near the distal end remain naturally finer.
+        parent_local_radius = parent.radius_at(branch_position)
+        parent_structural_radius = float(np.quantile(parent.radii, 0.75))
+        radius_reference = max(
+            parent_local_radius,
+            parent_structural_radius * 0.55,
+        )
+        starting_radius = max(radius_reference * radius_scale, minimum_base_radius)
         ending_radius = max(starting_radius * radius_tip_scale, minimum_tip_radius)
         radius_profile = []
         for sample_index in range(segment_count + 1):
