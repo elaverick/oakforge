@@ -296,8 +296,8 @@ def _make_oak_leaves(
         right_corners = centre_positions - width_directions * half_widths
         tip_positions = base_positions + growth_directions * leaf_lengths[:, None]
         triangle_positions = np.stack((
-            np.stack((base_positions, left_corners, tip_positions), axis=1),
-            np.stack((base_positions, tip_positions, right_corners), axis=1),
+            np.stack((base_positions, tip_positions, left_corners), axis=1),
+            np.stack((base_positions, right_corners, tip_positions), axis=1),
         ), axis=1)
         leaf_normals = np.cross(growth_directions, width_directions)
         normal_lengths = np.linalg.norm(leaf_normals, axis=1, keepdims=True)
