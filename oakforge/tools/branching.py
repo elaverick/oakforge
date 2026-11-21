@@ -149,7 +149,8 @@ def create_child_branches(
         parent_tangent = parent.tangent_at(branch_position)
         parent_radius = parent.radius_at(branch_position)
         # Start the child slightly inside the parent instead of exactly on its
-        # centreline. This keeps the basal cap buried when its parent is thin.
+        # centreline. Keep the offset based on the actual attachment-section
+        # radius even though child calibre uses a more stable structural radius.
         parent_point = parent_attachment - parent_tangent * (parent_radius * junction_embed)
         radial_axis, _ = perpendicular_frame(parent_tangent)
         adaptive_upward_bias = upward_bias
