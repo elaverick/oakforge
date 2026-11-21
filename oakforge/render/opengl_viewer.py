@@ -338,8 +338,6 @@ class OpenGLViewer:
     def _create_leaf_texture(self) -> None:
         """Upload the deterministic, transparent oak-leaf atlas."""
         gl = self.gl
-        from PIL import Image
-
         atlas = build_oak_leaf_atlas()
         pixels = np.flipud(np.asarray(atlas, dtype=np.uint8)).copy()
         self.leaf_texture = int(gl.glGenTextures(1))
@@ -355,7 +353,9 @@ class OpenGLViewer:
             gl.GL_RGBA, gl.GL_UNSIGNED_BYTE, pixels,
         )
         gl.glGenerateMipmap(gl.GL_TEXTURE_2D)
+        gl.glUseProgram(self.program)
         gl.glUniform1i(self.tree_uniforms["leaf_texture"], 0)
+        gl.glUseProgram(0)
         gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
 
     def _upload_vertex_data(
