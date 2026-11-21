@@ -202,6 +202,7 @@ class ProgressiveGenerationSession:
         self.structural_actions: list[dict[str, Any]] = []
         self.trailing_actions: list[dict[str, Any]] = []
         self.foliage_actions: list[dict[str, Any]] = []
+        self.foliage_disabled_actions: list[dict[str, Any]] = []
         self.foliage_enabled = False
         self.total_leaf_passes = 0
         self.current_leaf_pass = 0
@@ -238,6 +239,7 @@ class ProgressiveGenerationSession:
             self.foliage_enabled = bool(
                 self.engine.evaluate(foliage_if.get("condition", False))
             )
+            self.foliage_disabled_actions = list(foliage_if.get("else", []))
             if self.foliage_enabled:
                 self.foliage_actions = list(foliage_loop.get("do", []))
                 condition = foliage_loop.get("condition", {})
@@ -260,7 +262,9 @@ class ProgressiveGenerationSession:
         self.engine.execute(self.structural_actions)
         if self.foliage_enabled:
             self.context.values["leaf_pass"] = 0
-        elif not self.trailing_actions:
+        else:
+            self.engine.execute(self.foliage_disabled_actions)
+            self.engine.execute(self.trailing_actions)
             self._finished = True
         self._prepared = True
         return perf_counter() - started
@@ -421,7 +425,7 @@ def build_lod_representation(
 
 
 class ProgressiveTreeWorker:
-    """Generate the complete tree and publish successively finer CPU LODs."""
+    """Build the structural tree once, then publish foliage passes incrementally."""
 
     def __init__(self, recipe_path: str | Path, seed_override: int | None = None) -> None:
         self.recipe_path = Path(recipe_path)
@@ -440,24 +444,64 @@ class ProgressiveTreeWorker:
                 continue
         return False
 
+    def _publish_level(
+        self,
+        session: ProgressiveGenerationSession,
+        level: int,
+        generation_started: float,
+    ) -> bool:
+        tree = session.build_tree_model()
+        representation = build_lod_representation(
+            tree, level, leaf_population_pre_sampled=True
+        )
+        representation = replace(
+            representation,
+            generation_elapsed_seconds=perf_counter() - generation_started,
+            generation_complete=(level == 0),
+        )
+        return self._publish(representation)
+
     def _run(self) -> None:
         try:
-            recipe = load_recipe(self.recipe_path)
-            if self.seed_override is not None:
-                recipe["tree"]["seed"] = int(self.seed_override)
             generation_started = perf_counter()
-            tree = generate_tree(recipe)
-            full_generation_seconds = perf_counter() - generation_started
-            for level in (2, 1, 0):
+            session = ProgressiveGenerationSession(
+                self.recipe_path, seed_override=self.seed_override
+            )
+            session.prepare_structure()
+            total_passes = session.total_leaf_passes
+
+            if total_passes <= 0:
+                session.finish()
+                for level in (2, 1, 0):
+                    if self._stop.is_set():
+                        return
+                    if not self._publish_level(session, level, generation_started):
+                        return
+                return
+
+            # The first recipe pass supplies approximately one quarter of the
+            # actual leaf population; the second supplies half. Remaining
+            # passes are only needed to complete the hero-detail representation.
+            lod2_pass = max(1, int(math.ceil(total_passes * 0.25)))
+            lod1_pass = min(
+                total_passes,
+                max(lod2_pass + 1, int(math.ceil(total_passes * 0.5))),
+            )
+            for pass_number in range(1, total_passes + 1):
                 if self._stop.is_set():
                     return
-                representation = build_lod_representation(tree, level)
-                representation = replace(
-                    representation,
-                    full_generation_seconds=full_generation_seconds,
-                )
-                if not self._publish(representation):
-                    return
+                if not session.advance_leaf_pass():
+                    break
+                if pass_number == lod2_pass:
+                    if not self._publish_level(session, 2, generation_started):
+                        return
+                if pass_number == lod1_pass:
+                    if not self._publish_level(session, 1, generation_started):
+                        return
+                if pass_number == total_passes:
+                    session.finish()
+                    if not self._publish_level(session, 0, generation_started):
+                        return
         except BaseException as error:
             self._publish(error)
         finally:
