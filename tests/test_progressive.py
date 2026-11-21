@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from oakforge.generation import generate_from_file
+from oakforge.render.opengl_viewer import OpenGLViewer
 from oakforge.progressive import (
     build_cluster_leaves,
     build_lod_representation,
@@ -32,8 +33,7 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertNotIn("tertiary", roles)
         self.assertNotIn("twig", roles)
         self.assertNotIn("spray", roles)
-        self.assertGreater(len(self.coarse_tree.leaves), 1000)
-        self.assertLessEqual(len(self.coarse_tree.leaves), 1800)
+        self.assertEqual(len(self.coarse_tree.leaves), 1800)
         self.assertEqual(self.coarse_tree.metadata["progressive_level"], 3)
 
     def test_coarse_scaffold_matches_the_same_seed_full_recipe(self):
@@ -74,10 +74,37 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertIn("tertiary", roles)
         self.assertNotIn("twig", roles)
         self.assertNotIn("spray", roles)
-        self.assertGreater(len(representation.leaves), 5000)
-        self.assertLessEqual(len(representation.leaves), 7200)
+        self.assertEqual(len(representation.leaves), 7200)
         self.assertEqual(representation.metadata["progressive_level"], 2)
 
+
+
+    def test_near_lods_retain_full_branch_hierarchy_and_progressively_add_real_leaves(self):
+        lod1 = _tree_for_level(self.full_tree, 1)
+        lod0 = _tree_for_level(self.full_tree, 0)
+        self.assertEqual(len(lod1.branches), len(self.full_tree.branches))
+        self.assertEqual(len(lod0.branches), len(self.full_tree.branches))
+        self.assertEqual(len(lod1.leaves), (len(self.full_tree.leaves) + 7) // 8)
+        self.assertEqual(len(lod0.leaves), len(self.full_tree.leaves))
+        self.assertEqual(lod1.metadata["progressive_level"], 1)
+        self.assertEqual(lod0.metadata["progressive_level"], 0)
+
+    def test_distance_lod_selection_uses_hysteresis(self):
+        viewer = OpenGLViewer.__new__(OpenGLViewer)
+        viewer.active_lod = 3
+        viewer.camera_distance = 45.0
+        self.assertEqual(viewer._desired_progressive_lod(), 3)
+        viewer.camera_distance = 43.9
+        self.assertEqual(viewer._desired_progressive_lod(), 2)
+        viewer.camera_distance = 48.0
+        self.assertEqual(viewer._desired_progressive_lod(), 2)
+        viewer.camera_distance = 48.1
+        self.assertEqual(viewer._desired_progressive_lod(), 3)
+        viewer.active_lod = 0
+        viewer.camera_distance = 15.0
+        self.assertEqual(viewer._desired_progressive_lod(), 0)
+        viewer.camera_distance = 15.1
+        self.assertEqual(viewer._desired_progressive_lod(), 1)
 
 if __name__ == "__main__":
     unittest.main()
