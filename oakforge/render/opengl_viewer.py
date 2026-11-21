@@ -129,6 +129,7 @@ class OpenGLViewer:
         self.progressive_lods: dict[int, Any] = {}
         self.active_lod: int | None = None
         self.progressive_finished = progressive_worker is None
+        self.progressive_error = False
         if initial_lod is not None:
             self.progressive_lods[int(initial_lod.level)] = initial_lod
         self.impostor_directory = Path(impostor_directory)
@@ -205,7 +206,12 @@ class OpenGLViewer:
         glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
         glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
         glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, glfw.TRUE)
-        self.window = glfw.create_window(1440, 960, "OakForge | Canopy LOD comparison", None, None)
+        window_title = (
+            "OakForge | Progressive Tree LOD"
+            if self.progressive_worker is not None
+            else "OakForge | Canopy LOD comparison"
+        )
+        self.window = glfw.create_window(1440, 960, window_title, None, None)
         if not self.window:
             glfw.terminate()
             raise RuntimeError("Could not create an OpenGL 3.3 window.")
@@ -797,7 +803,9 @@ class OpenGLViewer:
                     self.status_message = f"Impostor switch failed: {error}"
                     print(self.status_message)
         elif key == glfw.KEY_C:
-            if self.canopy_renderer is not None:
+            if self.progressive_worker is not None:
+                self.status_message = "Splat appearance controls are available in the legacy depth-impostor viewer"
+            elif self.canopy_renderer is not None:
                 current = IMPOSTOR_STYLES.index(self.canopy_renderer.style)
                 style = IMPOSTOR_STYLES[(current + 1) % len(IMPOSTOR_STYLES)]
                 self.canopy_renderer.set_style(style)
@@ -805,28 +813,36 @@ class OpenGLViewer:
             else:
                 self.status_message = "Switch to the depth impostor with I to change foliage style"
         elif key in (glfw.KEY_LEFT_BRACKET, glfw.KEY_RIGHT_BRACKET):
-            if self.canopy_renderer is not None:
+            if self.progressive_worker is not None:
+                self.status_message = "Noise tuning is available in the legacy depth-impostor viewer"
+            elif self.canopy_renderer is not None:
                 delta = -0.25 if key == glfw.KEY_LEFT_BRACKET else 0.25
                 value = self.canopy_renderer.adjust_noise_intensity(delta)
                 self.status_message = f"Foliage noise intensity: {value:.2f}"
             else:
                 self.status_message = "Switch to the depth impostor with I to tune foliage noise"
         elif key in (glfw.KEY_COMMA, glfw.KEY_PERIOD):
-            if self.canopy_renderer is not None:
+            if self.progressive_worker is not None:
+                self.status_message = "Noise tuning is available in the legacy depth-impostor viewer"
+            elif self.canopy_renderer is not None:
                 delta = -3.0 if key == glfw.KEY_COMMA else 3.0
                 value = self.canopy_renderer.adjust_noise_scale(delta)
                 self.status_message = f"Foliage noise scale: {value:.1f}"
             else:
                 self.status_message = "Switch to the depth impostor with I to tune foliage noise"
         elif key in (glfw.KEY_MINUS, glfw.KEY_EQUAL):
-            if self.canopy_renderer is not None:
+            if self.progressive_worker is not None:
+                self.status_message = "Angular splat tuning is available in the legacy depth-impostor viewer"
+            elif self.canopy_renderer is not None:
                 delta = -0.2 if key == glfw.KEY_MINUS else 0.2
                 value = self.canopy_renderer.adjust_angularity(delta)
                 self.status_message = f"Foliage angularity: {value:.2f}"
             else:
                 self.status_message = "Switch to the depth impostor with I to tune foliage shape"
         elif key in (glfw.KEY_Z, glfw.KEY_X):
-            if self.canopy_renderer is not None:
+            if self.progressive_worker is not None:
+                self.status_message = "Splat footprint tuning is available in the legacy depth-impostor viewer"
+            elif self.canopy_renderer is not None:
                 delta = -0.4 if key == glfw.KEY_Z else 0.4
                 value = self.canopy_renderer.adjust_splat_scale(delta)
                 self.status_message = f"Impostor footprint scale: {value:.1f}x"
@@ -869,6 +885,7 @@ class OpenGLViewer:
                 self.active_lod = None
                 self.max_depth = 4
                 self.progressive_finished = False
+                self.progressive_error = False
                 self._activate_progressive_lod(force=True)
                 self.status_message = f"Regenerating seed {next_seed} in the background"
                 return
@@ -940,9 +957,11 @@ class OpenGLViewer:
         for item in self.progressive_worker.poll():
             if item is None:
                 self.progressive_finished = True
-                self.status_message = "Progressive tree generation complete"
+                if not self.progressive_error:
+                    self.status_message = "Progressive tree generation complete"
             elif isinstance(item, BaseException):
                 self.progressive_finished = True
+                self.progressive_error = True
                 self.status_message = f"Progressive generation failed: {item}"
                 print(self.status_message)
             else:
@@ -1022,19 +1041,24 @@ class OpenGLViewer:
         print("\nOakForge viewer controls:")
         print("  Drag with left mouse button : orbit camera")
         print("  Mouse wheel                 : zoom")
-        print("  I                           : toggle polygon leaves / depth impostor")
-        print("  C                           : cycle square / round / angular / foliage splats")
-        print("  [ / ]                       : decrease / increase foliage edge-noise strength")
-        print("  , / .                       : decrease / increase foliage noise scale")
-        print("  - / =                       : decrease / increase angularity")
-        print("  Z / X                       : decrease / increase impostor footprint size")
-        print("  A                           : enable / pause automatic progressive LOD")
-        print("  B                           : reset representation benchmark averages")
-        print("  L                           : toggle canopy visibility")
-        print("  1 / 2 / 3 / 4 / 5           : trunk / primary / secondary / tertiary / full tree")
+        if self.progressive_worker is not None:
+            print("  A                           : enable / pause automatic distance-based LOD")
+            print("  1 / 2 / 3 / 4 / 5           : manual structural inspection (pauses automatic LOD)")
+            print("  L                           : toggle canopy visibility")
+            print("  R                           : regenerate after current background generation finishes")
+        else:
+            print("  I                           : toggle polygon leaves / depth impostor")
+            print("  C                           : cycle square / round / angular / foliage splats")
+            print("  [ / ]                       : decrease / increase foliage edge-noise strength")
+            print("  , / .                       : decrease / increase foliage noise scale")
+            print("  - / =                       : decrease / increase angularity")
+            print("  Z / X                       : decrease / increase impostor footprint size")
+            print("  B                           : reset representation benchmark averages")
+            print("  L                           : toggle canopy visibility")
+            print("  1 / 2 / 3 / 4 / 5           : trunk / primary / secondary / tertiary / full tree")
+            print("  R                           : regenerate tree and re-bake its canopy")
         print("  W                           : toggle polygon wireframe")
         print("  V                           : toggle VSync (off by default for benchmarking)")
-        print("  R                           : regenerate tree and re-bake its canopy")
         print("  F                           : reset camera")
         print("  Escape                      : close viewer\n")
 
