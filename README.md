@@ -4,7 +4,7 @@ OakForge is a small SpeedTree-inspired procedural tree generator. It builds an E
 
 The generator and renderer are deliberately separate. The growth tools produce a renderer-independent tree model; the viewer consumes that model. You can run the recipe interpreter and export geometry without installing the graphics dependencies.
 
-The current English-oak recipe generates one trunk, seven main buttress roots, thirteen lateral surface roots and eleven finer feeder roots for its default seed. Its crown contains eight broad primary scaffold limbs, six upper leaders, 104 secondary boughs, 624 tertiary branches, 4,992 terminal twigs and 1,490 leaf-bearing sprays, carrying 311,136 individual oak leaves in the canonical botanical model. The progressive runtime renderer does not triangulate every source leaf: it selects a bounded, evenly distributed population of two-triangle foliage cards and omits terminal twig/spray tubes. The upper leaders fork into the crown and their descendants are gently steered towards a spread-out upper-crown target, avoiding a single exposed central pole. The coarse trunk, all root tiers, primary limbs, upper leaders and secondary limbs are fused into a continuous polygon surface. Main roots and offshoots can be generated procedurally from a seed or positioned individually in YAML. Use the supplied recipes to inspect the complete tree, an isolated trunk with procedural root networks, or an isolated trunk with manually positioned roots.
+The current English-oak recipe generates one trunk, seven main buttress roots, thirteen lateral surface roots and eleven finer feeder roots for its default seed. Its crown contains eight broad primary scaffold limbs, six upper leaders, 104 secondary boughs, 624 tertiary branches, 4,992 terminal twigs and 1,490 leaf-bearing sprays, carrying 311,136 individual oak leaves in the canonical botanical model. The progressive runtime renderer does not triangulate every source leaf: it selects a bounded population of two-triangle, alpha-cutout cards using a 16-variant oak-leaf atlas. The first-visible canopy groups six overlapping leaves into each branch-attached spray, instead of scattering isolated polygon cards. The upper leaders fork into the crown and their descendants are gently steered towards a spread-out upper-crown target, avoiding a single exposed central pole. The coarse trunk, all root tiers, primary limbs, upper leaders and secondary limbs are fused into a continuous polygon surface. Main roots and offshoots can be generated procedurally from a seed or positioned individually in YAML. Use the supplied recipes to inspect the complete tree, an isolated trunk with procedural root networks, or an isolated trunk with manually positioned roots.
 
 ## What is included
 
@@ -18,7 +18,7 @@ The current English-oak recipe generates one trunk, seven main buttress roots, t
 - **Packed mesh builders** — expose separate polygon wood (`build_wood_mesh`), foliage (`build_foliage_mesh`) and complete legacy (`build_tree_mesh`) meshes. Terminal twigs/sprays can be routed to either the polygon mesh or canopy impostor.
 - **Layered canopy depth-impostor baker** — captures multiple depth-peeling layers of leaves into multi-view colour, normal and 16-bit depth atlases. Structural wood remains a separate polygon mesh for conventional LOD.
 - **YAML recipe engine** — calls named tools and controls their execution order.
-- **Progressive OpenGL viewer** — starts with a branch-anchored clustered canopy and coarse scaffold, then streams finer tree representations from a CPU worker. Distance-based LOD selection never waits for a finer representation. OpenGL uploads remain on the context-owning thread.
+- **Progressive OpenGL viewer** — starts with compact, textured, branch-attached leaf sprays and a coarse scaffold, then streams finer tree representations from a CPU worker. Distance-based LOD selection never waits for a finer representation. OpenGL uploads remain on the context-owning thread.
 - **Legacy impostor viewer** — retains the baked layered depth-impostor versus polygon comparison for explicit A/B inspection.
 - **OBJ exporter** — writes the generated geometry for inspection in Blender or another 3D package.
 
@@ -49,7 +49,7 @@ From the project root:
 python main.py
 ```
 
-OakForge first constructs the mature structural scaffold through tertiary branches and places 3,072 deterministic canopy cards across that framework. It then generates the canonical terminal twigs, sprays and 311,136 source leaves in the background, preparing progressively denser runtime representations. The viewer selects bounded foliage-card populations of 3,072, 8,192, 16,384 and 40,960 leaves for LOD3 through LOD0 respectively; every runtime leaf card is two triangles. The viewer stays responsive and continues drawing the best available representation while refinement runs.
+OakForge first constructs the mature structural scaffold through tertiary branches and places 3,072 deterministic textured leaf cards as 512 overlapping six-leaf sprays across that framework. It then generates the canonical terminal twigs, sprays and 311,136 source leaves in the background, preparing progressively denser runtime representations. The viewer selects bounded foliage-card populations of 3,072, 8,192, 16,384 and 40,960 leaves for LOD3 through LOD0 respectively; every runtime leaf card is two triangles. The viewer stays responsive and continues drawing the best available representation while refinement runs.
 
 Use another recipe with:
 
@@ -61,10 +61,10 @@ Automatic LOD is selected by camera distance, with a two-metre hysteresis band a
 
 | LOD | Camera distance | Representation |
 |---|---:|---|
-| LOD3 | 46 m and beyond | Fused major scaffold, 3,072 distributed canopy cards; tertiary wood tubes deferred |
-| LOD2 | 26–46 m | Major scaffold plus simplified tertiary tubes, 8,192 two-triangle cards sampled from the first foliage pass |
-| LOD1 | 13–26 m | Major scaffold plus simplified tertiary tubes, 16,384 two-triangle cards sampled from the first two foliage passes |
-| LOD0 | Under 13 m | Major scaffold plus simplified tertiary tubes, 40,960 two-triangle cards sampled across the complete source foliage |
+| LOD3 | 46 m and beyond | Fused major scaffold, 3,072 textured cards arranged as 512 overlapping leaf sprays; tertiary wood tubes deferred |
+| LOD2 | 26–46 m | Major scaffold plus simplified tertiary tubes, 8,192 textured two-triangle oak-leaf cards |
+| LOD1 | 13–26 m | Major scaffold plus simplified tertiary tubes, 16,384 textured two-triangle oak-leaf cards |
+| LOD0 | Under 13 m | Major scaffold plus simplified tertiary tubes, 40,960 textured two-triangle oak-leaf cards |
 
 If the requested LOD is not ready yet, the viewer keeps the best available representation and never blocks the render loop waiting for the worker. Each transition uses a 0.35-second complementary screen-space dither between the outgoing and incoming meshes, with a two-metre hysteresis band around each distance threshold.
 
@@ -74,7 +74,7 @@ To measure the actual runtime mesh budgets (including an aggregate for 16 street
 python -m oakforge.geometry_budget --instances 16 --output-dir build/runtime-oak
 ```
 
-The command reports wood and foliage triangles, retained leaf cards, CPU/GPU buffer bytes and mesh-build time for every LOD. It also exports separate wood and foliage OBJ files for LOD0–LOD3 into the requested directory. It fails if any single tree exceeds the 200,000-triangle runtime budget. CI runs the same report and publishes the JSON budget plus the four wood/foliage OBJ pairs as build artifacts.
+The command reports wood and foliage triangles, retained leaf cards, CPU/GPU buffer bytes and mesh-build time for every LOD. It also exports separate wood and foliage OBJ files for LOD0–LOD3, matching MTL files, and the shared transparent `oak_leaf_atlas.png` texture into the requested directory. It fails if any single tree exceeds the 200,000-triangle runtime budget. CI runs the same report and publishes the JSON budget plus the four wood/foliage OBJ pairs as build artifacts.
 
 Viewer controls:
 
