@@ -8,10 +8,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Empty, Full, Queue
 from threading import Event, Thread
 from time import perf_counter
-from typing import Any
 import math
 
 import numpy as np
@@ -41,7 +40,7 @@ class ProgressiveLOD:
     @property
     def cpu_bytes(self) -> int:
         return sum(
-            len(buffer)
+            len(buffer) * buffer.itemsize
             for mesh in (self.wood_mesh, self.foliage_mesh)
             for buffer in (mesh.positions, mesh.normals, mesh.colours)
         )
@@ -228,7 +227,7 @@ class ProgressiveTreeWorker:
             try:
                 self._queue.put(item, timeout=0.1)
                 return True
-            except Exception:
+            except Full:
                 continue
         return False
 
