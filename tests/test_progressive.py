@@ -155,19 +155,45 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertLess(lod1_mesh.triangle_count, lod0_mesh.triangle_count)
 
 
-    def test_lod_two_uses_enlarged_leaves_to_preserve_canopy_coverage(self):
+    def test_intermediate_lods_enlarge_real_leaves_for_canopy_coverage(self):
         lod2_tree = _tree_for_level(self.full_tree, 2)
-        regular = build_foliage_mesh(lod2_tree, leaf_profile=MID_LEAF_PROFILE)
-        enlarged = build_foliage_mesh(
-            lod2_tree, leaf_profile=MID_LEAF_PROFILE, leaf_size_scale=1.20
-        )
-        regular_positions = np.frombuffer(regular.positions, dtype=np.float32).reshape(-1, 3)
-        enlarged_positions = np.frombuffer(enlarged.positions, dtype=np.float32).reshape(-1, 3)
-        self.assertEqual(regular.triangle_count, enlarged.triangle_count)
-        self.assertGreater(
-            float(np.linalg.norm(np.ptp(enlarged_positions, axis=0))),
-            float(np.linalg.norm(np.ptp(regular_positions, axis=0))),
-        )
+        lod1_tree = _tree_for_level(self.full_tree, 1)
+        for tree, profile, scale in (
+            (lod2_tree, MID_LEAF_PROFILE, 1.40),
+            (lod1_tree, NEAR_LEAF_PROFILE, 1.08),
+        ):
+            regular = build_foliage_mesh(tree, leaf_profile=profile)
+            enlarged = build_foliage_mesh(
+                tree, leaf_profile=profile, leaf_size_scale=scale
+            )
+            regular_positions = np.frombuffer(
+                regular.positions, dtype=np.float32
+            ).reshape(-1, 3)
+            enlarged_positions = np.frombuffer(
+                enlarged.positions, dtype=np.float32
+            ).reshape(-1, 3)
+            self.assertEqual(regular.triangle_count, enlarged.triangle_count)
+            self.assertGreater(
+                float(np.linalg.norm(np.ptp(enlarged_positions, axis=0))),
+                float(np.linalg.norm(np.ptp(regular_positions, axis=0))),
+            )
+
+    def test_canopy_surface_area_budget_increases_at_each_finer_lod(self):
+        lod2_tree = _tree_for_level(self.full_tree, 2)
+        lod1_tree = _tree_for_level(self.full_tree, 1)
+
+        def foliage_area(leaves, scale=1.0):
+            return sum(leaf.length * leaf.width for leaf in leaves) * scale ** 2
+
+        # Total leaf area is a useful monotonicity guard: adding more leaves
+        # must not be offset by shrinking every leaf enough to reduce canopy fill.
+        area_lod3 = foliage_area(self.coarse_tree.leaves)
+        area_lod2 = foliage_area(lod2_tree.leaves, 1.40)
+        area_lod1 = foliage_area(lod1_tree.leaves, 1.08)
+        area_lod0 = foliage_area(self.full_tree.leaves)
+        self.assertLess(area_lod3, area_lod2)
+        self.assertLess(area_lod2, area_lod1)
+        self.assertLess(area_lod1, area_lod0)
 
     def test_distance_lod_selection_uses_hysteresis(self):
         viewer = OpenGLViewer.__new__(OpenGLViewer)
