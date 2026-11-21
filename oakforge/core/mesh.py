@@ -228,10 +228,13 @@ def _make_oak_leaves(
     mesh: MeshData,
     batch_size: int = 16384,
     profile: list[tuple[float, float]] | None = None,
+    size_scale: float = 1.0,
 ) -> None:
     """Triangulate foliage in bounded batches using the requested LOD profile."""
     if not leaves:
         return
+    if size_scale <= 0.0:
+        raise ValueError("Leaf size_scale must be greater than zero")
 
     base_positions = np.asarray([leaf.base_position for leaf in leaves], dtype=np.float32)
     growth_directions = np.asarray(
@@ -240,8 +243,8 @@ def _make_oak_leaves(
     width_directions = np.asarray(
         [normalize(leaf.width_direction) for leaf in leaves], dtype=np.float32
     )
-    leaf_lengths = np.asarray([leaf.length for leaf in leaves], dtype=np.float32)
-    leaf_widths = np.asarray([leaf.width for leaf in leaves], dtype=np.float32)
+    leaf_lengths = np.asarray([leaf.length for leaf in leaves], dtype=np.float32) * size_scale
+    leaf_widths = np.asarray([leaf.width for leaf in leaves], dtype=np.float32) * size_scale
     colour_variations = np.asarray([leaf.colour_variation for leaf in leaves], dtype=np.float32)
 
     # The fan outline keeps the oak's alternating lobes while remaining a lightweight polygon.
@@ -324,6 +327,7 @@ def build_foliage_mesh(
     include_twigs: bool = False,
     radial_sides: int = 16,
     leaf_profile: list[tuple[float, float]] | None = None,
+    leaf_size_scale: float = 1.0,
 ) -> MeshData:
     """Build only canopy geometry for depth-impostor baking.
 
@@ -338,7 +342,9 @@ def build_foliage_mesh(
             if branch.role in {"twig", "spray"}:
                 _make_branch_tube(branch, mesh, radial_sides)
     if tree.leaves:
-        _make_oak_leaves(tree.leaves, mesh, profile=leaf_profile)
+        _make_oak_leaves(
+            tree.leaves, mesh, profile=leaf_profile, size_scale=leaf_size_scale
+        )
     return mesh
 
 
