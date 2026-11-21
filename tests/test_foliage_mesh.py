@@ -1,6 +1,8 @@
 """Tests for the canopy-only mesh path used by depth impostors."""
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 
@@ -55,6 +57,22 @@ class FoliageMeshTests(unittest.TestCase):
         self.assertTrue(
             np.isfinite(np.frombuffer(cards.texcoords, dtype=np.float32)).all()
         )
+
+    def test_textured_leaf_obj_exports_uvs_and_material_texture(self):
+        foliage = build_foliage_mesh(self.tree, card_mode=True)
+        with TemporaryDirectory() as temporary_directory:
+            obj_path = Path(temporary_directory) / "LOD0_foliage.obj"
+            from oakforge.core.mesh import write_obj
+
+            write_obj(foliage, str(obj_path))
+            obj_text = obj_path.read_text(encoding="utf-8")
+            mtl_path = obj_path.with_suffix(".mtl")
+            mtl_text = mtl_path.read_text(encoding="utf-8")
+        self.assertIn("mtllib LOD0_foliage.mtl", obj_text)
+        self.assertIn("vt ", obj_text)
+        self.assertIn("usemtl OakLeaf", obj_text)
+        self.assertIn("map_Kd oak_leaf_atlas.png", mtl_text)
+        self.assertIn("map_d oak_leaf_atlas.png", mtl_text)
 
     def test_optional_terminal_twigs_are_added_without_structural_limbs(self):
         leaves_only = build_foliage_mesh(self.tree)
