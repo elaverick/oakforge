@@ -28,8 +28,8 @@ If the desired LOD is not ready, the viewer continues to use the best available 
 3. The viewer opens with LOD3.
 4. A background CPU worker executes the remaining recipe structure for the same seed: terminal twigs, sprays and the fused wood surface are generated once. It then executes one foliage scatter pass at a time. With the default four-pass oak recipe, pass one publishes LOD2 (8,192 cards sampled across the first source-leaf pass), pass two publishes LOD1 (16,384 cards sampled across the first two passes), and passes three and four complete the source foliage for LOD0 (40,960 cards sampled across the full 311,136-leaf population). Each ready mesh package is published through a bounded queue.
 5. The branch hierarchy and fused wood surface are unchanged by foliage passes. The worker builds the structural wood mesh once and shares that immutable CPU mesh with LOD2, LOD1 and LOD0; only the foliage mesh is rebuilt at each milestone. This reduces repeated CPU mesh work and avoids retaining duplicate wood buffers.
-5. The render thread drains completed packages and performs all OpenGL resource uploads. The CPU worker never calls OpenGL.
-6. Camera distance selects the best ready representation. The renderer retains already-ready LODs so that the user can move in either direction without rebuilding them.
+6. The render thread drains completed packages and performs all OpenGL resource uploads. The CPU worker never calls OpenGL.
+7. Camera distance selects the best ready representation. The renderer retains already-ready LODs so that the user can move in either direction without rebuilding them.
 
 The worker streams foliage-pass milestones but does not yet stream individual branch-growth milestones or refine independent subtrees. Structural generation (including the fused wood-surface build) remains one background stage; within foliage generation, each recipe pass is a separate publish point. Finer-grained subtree scheduling and scene-wide multi-tree prioritisation remain future work.
 
@@ -41,7 +41,7 @@ The worker streams foliage-pass milestones but does not yet stream individual br
 - The canonical tree retains all 311,136 leaf placements. Runtime LOD meshes select deterministic, evenly distributed subsets: 3,072 larger proxy cards at LOD3, 8,192 at LOD2, 16,384 at LOD1 and 40,960 at LOD0. Each runtime card is two triangles, and the per-level size scales preserve a monotonically increasing foliage-area budget towards LOD0.
 - Preserve the full lobed source-leaf model for baking and close-up reference work. Runtime rendering uses two-triangle pointed leaf cards with even sampling and fixed per-LOD budgets.
 - Preserve the existing layered depth-impostor baker as an optional offline representation. It is not required for first visibility or progressive runtime operation.
-- LOD3 and the refined LODs use the same fused trunk/root/primary/leader/secondary wood surface. Progressive runtime wood uses an 8-side build setting, resamples tertiary tubes to at most 3–6 segments, and omits terminal twig/spray tubes; the leaf-card canopy represents this fine growth at game distances. The English-oak fused wood surface uses a 0.20m voxel size for a lower polygon count.
+- LOD3 and the refined LODs use the same fused trunk/root/primary/leader/secondary wood surface. Progressive runtime wood uses an 8-side build setting, resamples tertiary tubes to at most 3–4 segments, and omits terminal twig/spray tubes; the leaf-card canopy represents this fine growth at game distances. The English-oak fused wood surface uses a 0.20m voxel size for a lower polygon count.
 - The canonical botanical model still creates 311,136 individual leaves, but LOD0 retains 40,960 cards at runtime. The `python -m oakforge.geometry_budget --instances 16` command builds each LOD and reports actual triangles and buffer bytes, failing if any tree exceeds the 200,000-triangle target.
 
 ## Threading and lifecycle
