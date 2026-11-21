@@ -13,7 +13,7 @@ LOD indices follow the conventional convention: LOD0 is the closest and most det
 | Level | Camera distance | Content |
 |---|---:|---|
 | LOD3 | 46 m and beyond | Fused trunk, roots and major scaffold limbs (primary, leaders and secondary); tertiary branches as swept tubes; 35,520 deterministic proxy leaves |
-| LOD2 | 26–46 m | Complete branch hierarchy including twigs and sprays, with one-quarter of original leaves enlarged by 1.4× |
+| LOD2 | 26–46 m | Complete branch hierarchy including twigs and sprays, with one-quarter of original leaves enlarged by 1.34× |
 | LOD1 | 13–26 m | Complete hierarchy with one-half of original leaf placements enlarged by 1.08× and a more detailed leaf profile |
 | LOD0 | Under 13 m | Complete hierarchy and every individual leaf with the full oak-lobed profile |
 
