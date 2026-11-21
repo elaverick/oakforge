@@ -66,6 +66,19 @@ LEAF_BASE_COLOUR = np.array([0.42, 0.66, 0.25], dtype=np.float64)
 
 # Each pair describes the half-width of an oak leaf at a position along its midrib.
 # Repeated broad sections and narrow notches create the characteristic lobed edge.
+FAR_LEAF_PROFILE = [
+    (0.00, 0.018), (0.25, 0.20), (0.50, 0.29),
+    (0.75, 0.20), (1.00, 0.0),
+]
+MID_LEAF_PROFILE = [
+    (0.00, 0.012), (0.16, 0.19), (0.34, 0.11),
+    (0.52, 0.30), (0.70, 0.13), (0.88, 0.17), (1.00, 0.0),
+]
+NEAR_LEAF_PROFILE = [
+    (0.00, 0.012), (0.12, 0.18), (0.25, 0.095),
+    (0.38, 0.29), (0.50, 0.14), (0.63, 0.31),
+    (0.76, 0.15), (0.90, 0.09), (1.00, 0.0),
+]
 OAK_LEAF_PROFILE = [
     (0.00, 0.012), (0.10, 0.18), (0.19, 0.095),
     (0.31, 0.29), (0.41, 0.14), (0.55, 0.31),
@@ -210,8 +223,13 @@ def _make_branch_tube(branch: Branch, mesh: MeshData, radial_sides: int) -> None
         _append_float_buffer(mesh.colours, cap_colours)
 
 
-def _make_oak_leaves(leaves: list[Leaf], mesh: MeshData, batch_size: int = 16384) -> None:
-    """Triangulate foliage in bounded batches to keep large crowns responsive."""
+def _make_oak_leaves(
+    leaves: list[Leaf],
+    mesh: MeshData,
+    batch_size: int = 16384,
+    profile: list[tuple[float, float]] | None = None,
+) -> None:
+    """Triangulate foliage in bounded batches using the requested LOD profile."""
     if not leaves:
         return
 
@@ -227,7 +245,7 @@ def _make_oak_leaves(leaves: list[Leaf], mesh: MeshData, batch_size: int = 16384
     colour_variations = np.asarray([leaf.colour_variation for leaf in leaves], dtype=np.float32)
 
     # The fan outline keeps the oak's alternating lobes while remaining a lightweight polygon.
-    left_edge = np.asarray(OAK_LEAF_PROFILE, dtype=np.float32)
+    left_edge = np.asarray(profile or OAK_LEAF_PROFILE, dtype=np.float32)
     right_edge = left_edge[:-1].copy()
     right_edge[:, 1] *= -1.0
     outline = np.concatenate((left_edge, right_edge[::-1]), axis=0)
@@ -305,6 +323,7 @@ def build_foliage_mesh(
     tree: TreeModel,
     include_twigs: bool = False,
     radial_sides: int = 16,
+    leaf_profile: list[tuple[float, float]] | None = None,
 ) -> MeshData:
     """Build only canopy geometry for depth-impostor baking.
 
@@ -319,7 +338,7 @@ def build_foliage_mesh(
             if branch.role in {"twig", "spray"}:
                 _make_branch_tube(branch, mesh, radial_sides)
     if tree.leaves:
-        _make_oak_leaves(tree.leaves, mesh)
+        _make_oak_leaves(tree.leaves, mesh, profile=leaf_profile)
     return mesh
 
 
