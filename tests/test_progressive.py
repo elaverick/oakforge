@@ -30,10 +30,10 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertIn("primary", roles)
         self.assertIn("leader", roles)
         self.assertIn("secondary", roles)
-        self.assertNotIn("tertiary", roles)
+        self.assertIn("tertiary", roles)
         self.assertNotIn("twig", roles)
         self.assertNotIn("spray", roles)
-        self.assertEqual(len(self.coarse_tree.leaves), 10000)
+        self.assertEqual(len(self.coarse_tree.leaves), 17760)
         self.assertEqual(self.coarse_tree.metadata["progressive_level"], 3)
 
     def test_coarse_scaffold_matches_the_same_seed_full_recipe(self):
@@ -78,9 +78,10 @@ class ProgressiveTreeTests(unittest.TestCase):
         representation = _tree_for_level(self.full_tree, 2)
         roles = {branch.role for branch in representation.branches}
         self.assertIn("tertiary", roles)
-        self.assertNotIn("twig", roles)
-        self.assertNotIn("spray", roles)
-        self.assertEqual(len(representation.leaves), 54000)
+        self.assertIn("twig", roles)
+        self.assertIn("spray", roles)
+        self.assertEqual(len(representation.branches), len(self.full_tree.branches))
+        self.assertEqual(len(representation.leaves), (len(self.full_tree.leaves) + 7) // 8)
         self.assertEqual(representation.metadata["progressive_level"], 2)
 
 
@@ -90,7 +91,9 @@ class ProgressiveTreeTests(unittest.TestCase):
         lod0 = _tree_for_level(self.full_tree, 0)
         self.assertEqual(len(lod1.branches), len(self.full_tree.branches))
         self.assertEqual(len(lod0.branches), len(self.full_tree.branches))
-        self.assertEqual(len(lod1.leaves), (len(self.full_tree.leaves) + 1) // 2)
+        self.assertIn("twig", {branch.role for branch in lod1.branches})
+        self.assertIn("spray", {branch.role for branch in lod1.branches})
+        self.assertEqual(len(lod1.leaves), (len(self.full_tree.leaves) + 2) // 3)
         self.assertEqual(len(lod0.leaves), len(self.full_tree.leaves))
         self.assertEqual(lod1.metadata["progressive_level"], 1)
         self.assertEqual(lod0.metadata["progressive_level"], 0)
