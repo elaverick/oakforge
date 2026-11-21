@@ -66,7 +66,7 @@ Automatic LOD is selected by camera distance, with a two-metre hysteresis band a
 | LOD1 | 13–26 m | Full branch hierarchy and one-eighth sampling of actual leaves |
 | LOD0 | Under 13 m | Full branch hierarchy and all generated detailed leaves |
 
-If the requested LOD is not ready yet, the viewer keeps the closest higher-quality representation already prepared. It never blocks the render loop waiting for the worker.
+If the requested LOD is not ready yet, the viewer keeps the closest higher-quality representation already prepared. It never blocks the render loop waiting for the worker. LOD changes currently use a hard representation swap with a two-metre hysteresis band; there is no temporal cross-fade yet.
 
 Viewer controls:
 
