@@ -148,6 +148,9 @@ def generate_coarse_tree(recipe_path: str | Path, seed_override: int | None = No
         "progressive_status": "initial scaffold and clustered canopy",
         "source_leaf_count": 0,
         "proxy_leaf_count": len(tree.leaves),
+        "leaf_count": len(tree.leaves),
+        "representation_leaf_count": len(tree.leaves),
+        "representation_branch_count": len(tree.branches),
     })
     return tree
 
@@ -188,6 +191,9 @@ def _tree_for_level(source: TreeModel, level: int) -> TreeModel:
         })
     else:
         raise ValueError(f"Unsupported progressive LOD level: {level}")
+    metadata["leaf_count"] = len(tree.leaves)
+    metadata["representation_leaf_count"] = len(tree.leaves)
+    metadata["representation_branch_count"] = len(tree.branches)
     tree.metadata = metadata
     return tree
 
