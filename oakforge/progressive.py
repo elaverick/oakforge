@@ -78,7 +78,9 @@ def build_cluster_leaves(
     rng = np.random.default_rng(int(tree.metadata.get("seed", 1)) + seed_offset)
     # Spread a bounded number of anchors across the entire branch set rather
     # than exhausting an early section of the hierarchy and leaving crown gaps.
-    anchors_per_branch = 3
+    # Six compact whorls along each eligible scaffold limb fill the crown
+    # volume more evenly than three widely separated anchor points.
+    anchors_per_branch = 6
     leaves_per_anchor = 8
     maximum_branches = max(1, math.ceil(target_count / (anchors_per_branch * leaves_per_anchor)))
     selected_indices = set(np.linspace(
@@ -88,7 +90,7 @@ def build_cluster_leaves(
     for branch_index, branch in enumerate(candidates):
         if branch_index not in selected_indices:
             continue
-        for anchor_index, proportion in enumerate((0.16, 0.50, 0.84)):
+        for anchor_index, proportion in enumerate((0.08, 0.24, 0.40, 0.60, 0.76, 0.92)):
             if len(leaves) >= target_count:
                 return leaves
             tangent = normalize(branch.tangent_at(proportion), (0.0, 1.0, 0.0))
@@ -154,7 +156,7 @@ def generate_coarse_tree(recipe_path: str | Path, seed_override: int | None = No
         # The top-level for/if actions after the growth loop create sprays and
         # full leaf populations. Both are deliberately deferred.
     tree = generate_tree(recipe)
-    tree.leaves = build_cluster_leaves(tree, target_count=17760, seed_offset=3)
+    tree.leaves = build_cluster_leaves(tree, target_count=35520, seed_offset=3)
     tree.metadata = dict(tree.metadata)
     tree.metadata.update({
         "progressive_level": 3,
