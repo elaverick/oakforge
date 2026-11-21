@@ -39,10 +39,14 @@ class ProgressiveRuntimeOpenGLTests(unittest.TestCase):
         output_directory = Path("build") / "progressive-lod"
         output_directory.mkdir(parents=True, exist_ok=True)
 
-        def draw_and_capture(level: int) -> None:
-            # Hold the same camera distance for every image so the output
-            # compares representation quality rather than projected tree size.
-            viewer.camera_distance = 30.0
+        def draw_and_capture(
+            level: int,
+            distance: float = 30.0,
+            suffix: str = "",
+        ) -> None:
+            # The default camera distance compares representation quality
+            # directly; runtime captures use each LOD's intended distance band.
+            viewer.camera_distance = distance
             viewer._activate_progressive_lod(force=True, requested_level=level)
             self.assertEqual(viewer.active_lod, level)
             self.assertGreater(viewer.wood_vertex_count, 0)
@@ -81,7 +85,7 @@ class ProgressiveRuntimeOpenGLTests(unittest.TestCase):
             pixels = gl.glReadPixels(0, 0, width, height, gl.GL_RGB, gl.GL_UNSIGNED_BYTE)
             preview = Image.frombytes("RGB", (width, height), pixels)
             preview = preview.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
-            preview.save(output_directory / f"english_oak_lod{level}.png")
+            preview.save(output_directory / f"english_oak_lod{level}{suffix}.png")
             self.assertEqual(viewer.previous_wood_vao, 0)
             self.assertEqual(viewer.previous_canopy_vao, 0)
             self.assertNotIn("transition_wood_vbo", viewer.gpu_allocations)
@@ -110,10 +114,18 @@ class ProgressiveRuntimeOpenGLTests(unittest.TestCase):
             self.assertEqual(lod1.generation_complete, False)
             self.assertEqual(lod0.generation_complete, True)
 
+            # Same-distance comparison isolates representation quality.
             draw_and_capture(3)
             draw_and_capture(2)
             draw_and_capture(1)
             draw_and_capture(0)
+
+            # Runtime-distance captures verify the expected visual scale and
+            # crown silhouette in the camera bands used by automatic selection.
+            draw_and_capture(3, distance=60.0, suffix="_runtime")
+            draw_and_capture(2, distance=36.0, suffix="_runtime")
+            draw_and_capture(1, distance=19.0, suffix="_runtime")
+            draw_and_capture(0, distance=8.0, suffix="_runtime")
             gl = viewer.gl
             self.assertEqual(gl.glGetError(), gl.GL_NO_ERROR)
 
