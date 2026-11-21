@@ -968,7 +968,8 @@ class OpenGLViewer:
                 self.progressive_lods[int(item.level)] = item
                 self.status_message = (
                     f"Prepared LOD{item.level}: {item.name} "
-                    f"({item.triangle_count:,} triangles, {item.cpu_bytes / (1024 ** 2):.1f} MiB CPU)"
+                    f"({item.triangle_count:,} triangles, {item.cpu_bytes / (1024 ** 2):.1f} MiB CPU; "
+                    f"mesh {item.mesh_build_seconds:.2f}s, full recipe {item.full_generation_seconds:.2f}s)"
                 )
         if self.progressive_auto:
             self._activate_progressive_lod()
