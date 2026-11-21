@@ -131,13 +131,13 @@ def build_cluster_leaves(
 
 
 def generate_coarse_tree(recipe_path: str | Path, seed_override: int | None = None) -> TreeModel:
-    """Generate the mature far-LOD scaffold with a fused trunk-and-root collar.
+    """Generate the mature far-LOD scaffold with the shared fused major-wood surface.
 
-    The two early growth iterations preserve the full crown framework while
-    omitting terminal shoots, sprays and individual leaves. The trunk and every
-    root tier are fused into a lower-resolution basal surface so the distant
-    representation retains continuous root attachments without paying to fuse
-    the entire crown. The recipe's seed and botanical parameters are retained.
+    The two early growth iterations preserve the primary, leader, secondary and
+    tertiary crown framework while omitting terminal shoots, sprays and original
+    leaf placements. The trunk, roots and major scaffold limbs use the same fused
+    surface as the refined LODs, so their apparent calibre remains continuous
+    across the LOD3-to-LOD2 transition. Tertiary branches remain swept tubes.
     """
     recipe = load_recipe(recipe_path)
     if seed_override is not None:
@@ -157,12 +157,17 @@ def generate_coarse_tree(recipe_path: str | Path, seed_override: int | None = No
         elif "call" in action:
             call = action["call"]
             if call.get("tool") == "wood_surface.build":
-                # Keep all root tiers fused to the trunk, but leave the crown limbs
-                # as cheaper swept tubes in the first-visible representation.
+                # Keep the major structural limbs in the same fused surface
+                # at every LOD. If they are tubes only at LOD3, their apparent
+                # calibre changes abruptly when LOD2 replaces them with the
+                # smooth-unioned wood surface used by the refined representations.
                 coarse_action = dict(action)
                 coarse_call = dict(call)
                 coarse_arguments = dict(call.get("args", {}))
-                coarse_arguments["branches"] = ["$groups.trunk", "$groups.roots"]
+                coarse_arguments["branches"] = [
+                    "$groups.trunk", "$groups.roots", "$groups.primary",
+                    "$groups.leaders", "$groups.secondary",
+                ]
                 coarse_arguments["root_tip_radius_minimum"] = coarse_root_tip_minimum
                 coarse_call["args"] = coarse_arguments
                 coarse_action["call"] = coarse_call
