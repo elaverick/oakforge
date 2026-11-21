@@ -105,7 +105,7 @@ class ProgressiveRuntimeOpenGLTests(unittest.TestCase):
 
             lod0 = build_lod_representation(full_tree, 0)
             viewer.progressive_lods = {0: lod0}
-            draw_and_capture(0, 8.0)
+            draw_and_capture(0, 20.0)
             self.assertEqual(
                 lod0.tree.metadata["source_leaf_count"],
                 len(full_tree.leaves),
