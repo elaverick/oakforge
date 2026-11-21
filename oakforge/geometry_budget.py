@@ -18,10 +18,13 @@ from oakforge.progressive import build_lod_representation, generate_coarse_tree
 def build_geometry_budget_report(
     recipe_path: str | Path,
     instances: int = 1,
+    triangle_budget_per_tree: int = 200_000,
 ) -> dict[str, Any]:
     """Build all four runtime LODs and report their measured buffer budgets."""
     if instances < 1:
         raise ValueError("instances must be at least one")
+    if triangle_budget_per_tree < 1:
+        raise ValueError("triangle_budget_per_tree must be positive")
 
     full_tree = generate_from_file(recipe_path)
     coarse_tree = generate_coarse_tree(recipe_path)
@@ -44,6 +47,11 @@ def build_geometry_budget_report(
         wood_triangles = representation.wood_mesh.triangle_count
         foliage_triangles = representation.foliage_mesh.triangle_count
         total_triangles = wood_triangles + foliage_triangles
+        if total_triangles > triangle_budget_per_tree:
+            raise RuntimeError(
+                f"LOD{level} uses {total_triangles:,} triangles, exceeding the "
+                f"{triangle_budget_per_tree:,}-triangle per-tree budget"
+            )
         levels.append({
             "lod": level,
             "name": representation.name,
@@ -82,8 +90,16 @@ def main() -> None:
         default=16,
         help="Number of identical tree instances to aggregate (default: 16)",
     )
+    parser.add_argument(
+        "--max-triangles-per-tree",
+        type=int,
+        default=200_000,
+        help="Fail if any runtime LOD exceeds this per-tree triangle budget",
+    )
     args = parser.parse_args()
-    report = build_geometry_budget_report(args.config, args.instances)
+    report = build_geometry_budget_report(
+        args.config, args.instances, args.max_triangles_per_tree
+    )
     print(json.dumps(report, indent=2))
 
 
