@@ -94,6 +94,10 @@ class ProgressiveRuntimeOpenGLTests(unittest.TestCase):
             preview = Image.frombytes("RGB", (width, height), pixels)
             preview = preview.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
             preview.save(output_directory / f"english_oak_lod{level}.png")
+            self.assertEqual(viewer.previous_wood_vao, 0)
+            self.assertEqual(viewer.previous_canopy_vao, 0)
+            self.assertNotIn("transition_wood_vbo", viewer.gpu_allocations)
+            self.assertNotIn("transition_canopy_vbo", viewer.gpu_allocations)
 
         try:
             viewer._poll_progressive_updates()
