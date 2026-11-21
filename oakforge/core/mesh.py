@@ -370,8 +370,9 @@ def build_wood_mesh(
 ) -> MeshData:
     """Build trunk, roots and branch geometry without leaf polygons.
 
-    Set `include_terminal_twigs=False` when twig/spray geometry is supplied by
-    the canopy impostor instead. The default retains every branch tier.
+    Set `include_terminal_twigs=False` when terminal twig/spray structure is represented
+    by runtime foliage cards or a canopy impostor. Optional depth and segment limits
+    allow the progressive renderer to build cheaper branch LODs.
     """
     mesh = MeshData()
     fused_surface = tree.metadata.get("wood_surface")
