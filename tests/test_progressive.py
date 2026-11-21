@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
+from oakforge.core.mesh import FAR_LEAF_PROFILE, MID_LEAF_PROFILE, NEAR_LEAF_PROFILE, OAK_LEAF_PROFILE, build_foliage_mesh
 from oakforge.generation import generate_from_file
 from oakforge.render.opengl_viewer import OpenGLViewer
 from oakforge.progressive import (
@@ -97,6 +98,23 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertEqual(len(lod0.leaves), len(self.full_tree.leaves))
         self.assertEqual(lod1.metadata["progressive_level"], 1)
         self.assertEqual(lod0.metadata["progressive_level"], 0)
+
+
+    def test_foliage_mesh_profiles_reduce_triangles_at_each_lod(self):
+        lod3_mesh = build_foliage_mesh(self.coarse_tree, leaf_profile=FAR_LEAF_PROFILE)
+        lod2_tree = _tree_for_level(self.full_tree, 2)
+        lod1_tree = _tree_for_level(self.full_tree, 1)
+        lod0_tree = _tree_for_level(self.full_tree, 0)
+        lod2_mesh = build_foliage_mesh(lod2_tree, leaf_profile=MID_LEAF_PROFILE)
+        lod1_mesh = build_foliage_mesh(lod1_tree, leaf_profile=NEAR_LEAF_PROFILE)
+        lod0_mesh = build_foliage_mesh(lod0_tree, leaf_profile=OAK_LEAF_PROFILE)
+        self.assertEqual(lod3_mesh.triangle_count, len(self.coarse_tree.leaves) * (2 * len(FAR_LEAF_PROFILE) - 1))
+        self.assertEqual(lod2_mesh.triangle_count, len(lod2_tree.leaves) * (2 * len(MID_LEAF_PROFILE) - 1))
+        self.assertEqual(lod1_mesh.triangle_count, len(lod1_tree.leaves) * (2 * len(NEAR_LEAF_PROFILE) - 1))
+        self.assertEqual(lod0_mesh.triangle_count, len(lod0_tree.leaves) * (2 * len(OAK_LEAF_PROFILE) - 1))
+        self.assertLess(lod3_mesh.triangle_count, lod2_mesh.triangle_count)
+        self.assertLess(lod2_mesh.triangle_count, lod1_mesh.triangle_count)
+        self.assertLess(lod1_mesh.triangle_count, lod0_mesh.triangle_count)
 
     def test_distance_lod_selection_uses_hysteresis(self):
         viewer = OpenGLViewer.__new__(OpenGLViewer)
