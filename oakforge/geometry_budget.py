@@ -79,10 +79,10 @@ def build_geometry_budget_report(
             "triangles_per_tree": total_triangles,
             "triangles_for_instances": total_triangles * instances,
             "cpu_mesh_bytes_per_tree": representation.cpu_bytes,
-            "gpu_vertex_buffer_bytes_per_tree": representation.cpu_bytes,
-            "gpu_vertex_buffer_bytes_for_unique_instances": representation.cpu_bytes * instances,
-            "gpu_vertex_buffer_bytes_for_identical_instances": representation.cpu_bytes,
-            "buffer_mib_per_tree": round(representation.cpu_bytes / (1024 ** 2), 2),
+            "gpu_vertex_buffer_bytes_per_tree": representation.gpu_vertex_buffer_bytes,
+            "gpu_vertex_buffer_bytes_for_unique_instances": representation.gpu_vertex_buffer_bytes * instances,
+            "gpu_vertex_buffer_bytes_for_identical_instances": representation.gpu_vertex_buffer_bytes,
+            "buffer_mib_per_tree": round(representation.gpu_vertex_buffer_bytes / (1024 ** 2), 2),
             "mesh_build_seconds": round(representation.mesh_build_seconds, 3),
         })
 
