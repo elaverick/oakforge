@@ -159,7 +159,7 @@ class ProgressiveTreeTests(unittest.TestCase):
         lod2_tree = _tree_for_level(self.full_tree, 2)
         lod1_tree = _tree_for_level(self.full_tree, 1)
         for tree, profile, scale in (
-            (lod2_tree, MID_LEAF_PROFILE, 1.40),
+            (lod2_tree, MID_LEAF_PROFILE, 1.34),
             (lod1_tree, NEAR_LEAF_PROFILE, 1.08),
         ):
             regular = build_foliage_mesh(tree, leaf_profile=profile)
