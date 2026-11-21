@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from oakforge.core.mesh import write_obj
 from oakforge.generation import generate_from_file
 from oakforge.progressive import build_lod_representation, generate_coarse_tree
 
@@ -19,6 +20,7 @@ def build_geometry_budget_report(
     recipe_path: str | Path,
     instances: int = 1,
     triangle_budget_per_tree: int = 200_000,
+    output_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Build all four runtime LODs and report their measured buffer budgets."""
     if instances < 1:
@@ -42,6 +44,11 @@ def build_geometry_budget_report(
     )
 
     levels: list[dict[str, Any]] = []
+    exported_files: list[str] = []
+    output_path = Path(output_dir) if output_dir is not None else None
+    if output_path is not None:
+        output_path.mkdir(parents=True, exist_ok=True)
+
     for level in (3, 2, 1, 0):
         representation = representations[level]
         wood_triangles = representation.wood_mesh.triangle_count
@@ -52,6 +59,13 @@ def build_geometry_budget_report(
                 f"LOD{level} uses {total_triangles:,} triangles, exceeding the "
                 f"{triangle_budget_per_tree:,}-triangle per-tree budget"
             )
+        if output_path is not None:
+            wood_path = output_path / f"LOD{level}_wood.obj"
+            foliage_path = output_path / f"LOD{level}_foliage.obj"
+            write_obj(representation.wood_mesh, str(wood_path))
+            write_obj(representation.foliage_mesh, str(foliage_path))
+            exported_files.extend((str(wood_path), str(foliage_path)))
+
         levels.append({
             "lod": level,
             "name": representation.name,
@@ -61,7 +75,10 @@ def build_geometry_budget_report(
             "source_leaf_placements": representation.foliage_mesh.source_leaf_count,
             "triangles_per_tree": total_triangles,
             "triangles_for_instances": total_triangles * instances,
-            "buffer_bytes_per_tree": representation.cpu_bytes,
+            "cpu_mesh_bytes_per_tree": representation.cpu_bytes,
+            "gpu_vertex_buffer_bytes_per_tree": representation.cpu_bytes,
+            "gpu_vertex_buffer_bytes_for_unique_instances": representation.cpu_bytes * instances,
+            "gpu_vertex_buffer_bytes_for_identical_instances": representation.cpu_bytes,
             "buffer_mib_per_tree": round(representation.cpu_bytes / (1024 ** 2), 2),
             "mesh_build_seconds": round(representation.mesh_build_seconds, 3),
         })
@@ -70,6 +87,7 @@ def build_geometry_budget_report(
         "recipe": str(recipe_path),
         "instances": instances,
         "canonical_source_leaves": len(full_tree.leaves),
+        "exported_obj_files": exported_files,
         "levels": levels,
     }
 
@@ -96,9 +114,15 @@ def main() -> None:
         default=200_000,
         help="Fail if any runtime LOD exceeds this per-tree triangle budget",
     )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Optional directory for per-LOD wood and foliage OBJ exports",
+    )
     args = parser.parse_args()
     report = build_geometry_budget_report(
-        args.config, args.instances, args.max_triangles_per_tree
+        args.config, args.instances, args.max_triangles_per_tree, args.output_dir
     )
     print(json.dumps(report, indent=2))
 
