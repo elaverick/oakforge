@@ -14,6 +14,7 @@ from typing import Any
 from oakforge.core.mesh import write_obj
 from oakforge.generation import generate_from_file
 from oakforge.progressive import build_lod_representation, generate_coarse_tree
+from oakforge.render.foliage_texture import save_oak_leaf_atlas
 
 
 def build_geometry_budget_report(
@@ -46,8 +47,10 @@ def build_geometry_budget_report(
     levels: list[dict[str, Any]] = []
     exported_files: list[str] = []
     output_path = Path(output_dir) if output_dir is not None else None
+    exported_texture: str | None = None
     if output_path is not None:
         output_path.mkdir(parents=True, exist_ok=True)
+        exported_texture = str(save_oak_leaf_atlas(output_path / "oak_leaf_atlas.png"))
 
     for level in (3, 2, 1, 0):
         representation = representations[level]
@@ -88,6 +91,7 @@ def build_geometry_budget_report(
         "instances": instances,
         "canonical_source_leaves": len(full_tree.leaves),
         "exported_obj_files": exported_files,
+        "exported_leaf_texture": exported_texture,
         "levels": levels,
     }
 
