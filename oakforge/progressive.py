@@ -64,14 +64,9 @@ def build_cluster_leaves(
     rng = np.random.default_rng(int(tree.metadata.get("seed", 1)) + seed_offset)
     # Give each eligible branch several cluster anchors. The stride and cap keep
     # proxy density bounded for large species configurations.
-    anchors_per_branch = 3
     leaves_per_anchor = 4
-    maximum_anchors = max(1, math.ceil(target_count / leaves_per_anchor))
-    stride = max(1, math.ceil(len(candidates) * anchors_per_branch / maximum_anchors))
     leaves: list[Leaf] = []
     for branch_index, branch in enumerate(candidates):
-        if branch_index % stride:
-            continue
         tangent_frame = None
         for anchor_index, proportion in enumerate((0.24, 0.56, 0.86)):
             if len(leaves) >= target_count:
