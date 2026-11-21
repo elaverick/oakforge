@@ -391,15 +391,20 @@ def build_lod_representation(
     level: int,
     *,
     leaf_population_pre_sampled: bool = False,
+    shared_wood_mesh: MeshData | None = None,
 ) -> ProgressiveLOD:
-    """Build one LOD's CPU geometry without creating or touching GPU resources."""
+    """Build one LOD's CPU geometry without creating or touching GPU resources.
+
+    Pass a previously built wood mesh when successive LODs share the same
+    branch hierarchy and fused wood surface. In that case only foliage differs.
+    """
     build_started = perf_counter()
     lod_tree = (
         _tree_for_level(
             tree, level, leaf_population_pre_sampled=leaf_population_pre_sampled
         ) if level < 3 else tree
     )
-    wood_mesh = build_wood_mesh(lod_tree)
+    wood_mesh = shared_wood_mesh if shared_wood_mesh is not None else build_wood_mesh(lod_tree)
     leaf_profiles = {
         3: FAR_LEAF_PROFILE,
         2: MID_LEAF_PROFILE,
@@ -449,17 +454,23 @@ class ProgressiveTreeWorker:
         session: ProgressiveGenerationSession,
         level: int,
         generation_started: float,
-    ) -> bool:
+        shared_wood_mesh: MeshData | None = None,
+    ) -> MeshData | None:
         tree = session.build_tree_model()
         representation = build_lod_representation(
-            tree, level, leaf_population_pre_sampled=True
+            tree,
+            level,
+            leaf_population_pre_sampled=True,
+            shared_wood_mesh=shared_wood_mesh,
         )
         representation = replace(
             representation,
             generation_elapsed_seconds=perf_counter() - generation_started,
             generation_complete=(level == 0),
         )
-        return self._publish(representation)
+        if not self._publish(representation):
+            return None
+        return representation.wood_mesh
 
     def _run(self) -> None:
         try:
@@ -472,10 +483,14 @@ class ProgressiveTreeWorker:
 
             if total_passes <= 0:
                 session.finish()
+                shared_wood_mesh = None
                 for level in (2, 1, 0):
                     if self._stop.is_set():
                         return
-                    if not self._publish_level(session, level, generation_started):
+                    shared_wood_mesh = self._publish_level(
+                        session, level, generation_started, shared_wood_mesh
+                    )
+                    if shared_wood_mesh is None:
                         return
                 return
 
@@ -487,20 +502,30 @@ class ProgressiveTreeWorker:
                 total_passes,
                 max(lod2_pass + 1, int(math.ceil(total_passes * 0.5))),
             )
+            shared_wood_mesh: MeshData | None = None
             for pass_number in range(1, total_passes + 1):
                 if self._stop.is_set():
                     return
                 if not session.advance_leaf_pass():
                     break
                 if pass_number == lod2_pass:
-                    if not self._publish_level(session, 2, generation_started):
+                    shared_wood_mesh = self._publish_level(
+                        session, 2, generation_started
+                    )
+                    if shared_wood_mesh is None:
                         return
                 if pass_number == lod1_pass:
-                    if not self._publish_level(session, 1, generation_started):
+                    shared_wood_mesh = self._publish_level(
+                        session, 1, generation_started, shared_wood_mesh
+                    )
+                    if shared_wood_mesh is None:
                         return
                 if pass_number == total_passes:
                     session.finish()
-                    if not self._publish_level(session, 0, generation_started):
+                    shared_wood_mesh = self._publish_level(
+                        session, 0, generation_started, shared_wood_mesh
+                    )
+                    if shared_wood_mesh is None:
                         return
         except BaseException as error:
             self._publish(error)
