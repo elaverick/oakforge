@@ -131,15 +131,21 @@ def build_cluster_leaves(
 
 
 def generate_coarse_tree(recipe_path: str | Path, seed_override: int | None = None) -> TreeModel:
-    """Generate the mature oak scaffold through tertiary branches, without twigs or leaf work.
+    """Generate the mature far-LOD scaffold with a fused trunk-and-root collar.
 
     The two early growth iterations preserve the full crown framework while
-    omitting the thousands of terminal shoots, sprays and individual leaves.
-    The recipe's original seed and botanical parameters are retained.
+    omitting terminal shoots, sprays and individual leaves. The trunk and every
+    root tier are fused into a lower-resolution basal surface so the distant
+    representation retains continuous root attachments without paying to fuse
+    the entire crown. The recipe's seed and botanical parameters are retained.
     """
     recipe = load_recipe(recipe_path)
     if seed_override is not None:
         recipe["tree"]["seed"] = int(seed_override)
+    wood_parameters = recipe.get("tree", {}).get("parameters", {}).get("wood_surface", {})
+    coarse_root_tip_minimum = max(
+        0.12, float(wood_parameters.get("voxel_size", 0.075)) * 1.35
+    )
     source_pipeline = recipe["pipeline"]
     recipe["pipeline"] = []
     for action in source_pipeline:
@@ -149,7 +155,19 @@ def generate_coarse_tree(recipe_path: str | Path, seed_override: int | None = No
             progressive_action["max_iterations"] = 2
             recipe["pipeline"].append({"while": progressive_action})
         elif "call" in action:
-            if action["call"].get("tool") != "wood_surface.build":
+            call = action["call"]
+            if call.get("tool") == "wood_surface.build":
+                # Keep all root tiers fused to the trunk, but leave the crown limbs
+                # as cheaper swept tubes in the first-visible representation.
+                coarse_action = dict(action)
+                coarse_call = dict(call)
+                coarse_arguments = dict(call.get("args", {}))
+                coarse_arguments["branches"] = ["$groups.trunk", "$groups.roots"]
+                coarse_arguments["root_tip_radius_minimum"] = coarse_root_tip_minimum
+                coarse_call["args"] = coarse_arguments
+                coarse_action["call"] = coarse_call
+                recipe["pipeline"].append(coarse_action)
+            else:
                 recipe["pipeline"].append(action)
         elif "set" in action:
             recipe["pipeline"].append(action)
