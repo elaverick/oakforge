@@ -905,6 +905,7 @@ class OpenGLViewer:
                 self.progressive_worker = ProgressiveTreeWorker(recipe_path, seed_override=next_seed)
                 initial = build_lod_representation(self.tree, 3)
                 self.progressive_lods = {3: initial}
+                self._release_progressive_transition()
                 self.active_lod = None
                 self.max_depth = 4
                 self.progressive_finished = False
