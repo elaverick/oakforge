@@ -103,6 +103,8 @@ class OpenGLViewer:
         regenerate_callback: Callable[[], TreeModel],
         impostor_directory: str | Path,
         rebake_callback: Callable[[TreeModel], str | Path] | None = None,
+        progressive_worker: Any = None,
+        initial_lod: Any = None,
     ) -> None:
         try:
             import glfw
@@ -122,6 +124,13 @@ class OpenGLViewer:
         self.tree = tree
         self.regenerate_callback = regenerate_callback
         self.rebake_callback = rebake_callback
+        self.progressive_worker = progressive_worker
+        self.progressive_auto = progressive_worker is not None
+        self.progressive_lods: dict[int, Any] = {}
+        self.active_lod: int | None = None
+        self.progressive_finished = progressive_worker is None
+        if initial_lod is not None:
+            self.progressive_lods[int(initial_lod.level)] = initial_lod
         self.impostor_directory = Path(impostor_directory)
         self.window = None
         self.program = 0
@@ -593,6 +602,7 @@ class OpenGLViewer:
             f"Polygon average: {self._format_metric(polygon['fps'], ' FPS')}, {self._format_metric(polygon['frame_ms'], ' ms')} frame, {self._format_metric(polygon['gpu_ms'], ' ms')} GPU",
             f"Impostor average: {self._format_metric(impostor['fps'], ' FPS')}, {self._format_metric(impostor['frame_ms'], ' ms')} frame, {self._format_metric(impostor['gpu_ms'], ' ms')} GPU",
             f"Telemetry: {telemetry['backend']}   Renderer: {telemetry['gpu_name']}",
+            f"Progressive LOD: {'automatic' if self.progressive_auto else 'manual'} | active {self.active_lod if self.active_lod is not None else 'n/a'} | ready {','.join(str(level) for level in sorted(self.progressive_lods)) or 'none'}",
             f"Atlas view: {atlas_view}",
             f"Impostor style: {appearance}",
             "Appearance: C style | [/] noise | ,/. scale | -/= angularity | Z/X splat size",
@@ -751,13 +761,16 @@ class OpenGLViewer:
         if key == glfw.KEY_ESCAPE:
             glfw.set_window_should_close(window, True)
         elif key == glfw.KEY_I:
-            try:
-                self._set_canopy_mode(
-                    "impostor" if self.canopy_mode == "polygons" else "polygons"
-                )
-            except Exception as error:
-                self.status_message = f"Impostor switch failed: {error}"
-                print(self.status_message)
+            if self.progressive_worker is not None:
+                self.status_message = "Progressive mode uses generated cluster and polygon LODs; baked impostor is disabled"
+            else:
+                try:
+                    self._set_canopy_mode(
+                        "impostor" if self.canopy_mode == "polygons" else "polygons"
+                    )
+                except Exception as error:
+                    self.status_message = f"Impostor switch failed: {error}"
+                    print(self.status_message)
         elif key == glfw.KEY_C:
             if self.canopy_renderer is not None:
                 current = IMPOSTOR_STYLES.index(self.canopy_renderer.style)
@@ -803,10 +816,37 @@ class OpenGLViewer:
             self.vsync = not self.vsync
             glfw.swap_interval(1 if self.vsync else 0)
         elif key in (glfw.KEY_1, glfw.KEY_2, glfw.KEY_3, glfw.KEY_4, glfw.KEY_5):
+            self.progressive_auto = False
             self.max_depth = key - glfw.KEY_1
             self._upload_wood_mesh()
             self._set_canopy_mode(self.canopy_mode)
+        elif key == glfw.KEY_A and self.progressive_worker is not None:
+            self.progressive_auto = not self.progressive_auto
+            self.status_message = (
+                "Automatic distance LOD enabled" if self.progressive_auto
+                else "Automatic distance LOD paused; use 1-5 for structural inspection"
+            )
+            if self.progressive_auto:
+                self._activate_progressive_lod()
         elif key == glfw.KEY_R:
+            if self.progressive_worker is not None:
+                if not self.progressive_finished:
+                    self.status_message = "Wait for progressive generation to finish before regenerating"
+                    return
+                from oakforge.progressive import ProgressiveTreeWorker, build_lod_representation
+                recipe_path = self.progressive_worker.recipe_path
+                next_seed = int(self.tree.metadata.get("seed", 1)) + 1
+                self.progressive_worker.close()
+                self.tree = self.regenerate_callback()
+                self.progressive_worker = ProgressiveTreeWorker(recipe_path, seed_override=next_seed)
+                initial = build_lod_representation(self.tree, 3)
+                self.progressive_lods = {3: initial}
+                self.active_lod = None
+                self.max_depth = 4
+                self.progressive_finished = False
+                self._activate_progressive_lod(force=True)
+                self.status_message = f"Regenerating seed {next_seed} in the background"
+                return
             previous_mode = self.canopy_mode
             self.tree = self.regenerate_callback()
             if self.rebake_callback is not None:
@@ -845,6 +885,83 @@ class OpenGLViewer:
             self.camera_distance = self.default_camera_distance
             self.camera_target = self.default_camera_target.copy()
 
+
+    def _desired_progressive_lod(self) -> int:
+        """Map camera distance to the target level, with near detail at LOD0."""
+        if self.camera_distance >= 46.0:
+            return 3
+        if self.camera_distance >= 26.0:
+            return 2
+        if self.camera_distance >= 13.0:
+            return 1
+        return 0
+
+    def _poll_progressive_updates(self) -> None:
+        """Drain completed CPU representations; OpenGL uploads stay on this thread."""
+        if self.progressive_worker is None:
+            return
+        for item in self.progressive_worker.poll():
+            if item is None:
+                self.progressive_finished = True
+                self.status_message = "Progressive tree generation complete"
+            elif isinstance(item, BaseException):
+                self.progressive_finished = True
+                self.status_message = f"Progressive generation failed: {item}"
+                print(self.status_message)
+            else:
+                self.progressive_lods[int(item.level)] = item
+                self.status_message = (
+                    f"Prepared LOD{item.level}: {item.name} "
+                    f"({item.triangle_count:,} triangles, {item.cpu_bytes / (1024 ** 2):.1f} MiB CPU)"
+                )
+        if self.progressive_auto:
+            self._activate_progressive_lod()
+
+    def _activate_progressive_lod(self, force: bool = False) -> None:
+        """Promote the best ready LOD without ever dropping to a coarser blank."""
+        if not self.progressive_lods:
+            return
+        desired = self._desired_progressive_lod()
+        available = sorted(self.progressive_lods)
+        candidates = [level for level in available if level >= desired]
+        selected = min(candidates) if candidates else min(available)
+        if not force and selected == self.active_lod:
+            return
+        representation = self.progressive_lods[selected]
+        self.tree = representation.tree
+        self.wood_vertex_count, _ = self._upload_vertex_data(
+            self.wood_vao, self.wood_vbo, representation.wood_mesh, "wood_vbo"
+        )
+        self.wood_triangle_count = self.wood_vertex_count // 3
+        if not self.canopy_vao or not self.canopy_vbo:
+            self.canopy_vao = int(self.gl.glGenVertexArrays(1))
+            self.canopy_vbo = int(self.gl.glGenBuffers(1))
+        self.canopy_vertex_count, _ = self._upload_vertex_data(
+            self.canopy_vao, self.canopy_vbo, representation.foliage_mesh, "canopy_vbo"
+        )
+        self.canopy_triangle_count = self.canopy_vertex_count // 3
+        self.gpu_allocations["canopy_vbo"] = (
+            self.canopy_vertex_count * 9 * 4
+        )
+        self.active_lod = selected
+        self.max_depth = 4
+        self.canopy_mode = "polygons"
+        source_leaf_count = int(
+            representation.tree.metadata.get("source_leaf_count", len(representation.tree.leaves))
+        )
+        self.model_leaf_triangles = source_leaf_count * (2 * len(OAK_LEAF_PROFILE) - 1)
+        self.source_wood_triangles = self.wood_triangle_count
+        self.model_total_triangles = self.source_wood_triangles + self.model_leaf_triangles
+        self.representation_metrics["polygons"].update({
+            "triangles": self.canopy_triangle_count,
+            "vertices": self.canopy_vertex_count,
+            "gpu_bytes": self.gpu_allocations.get("canopy_vbo", 0),
+        })
+        self.status_message = (
+            f"Active LOD{selected}: {representation.name} "
+            f"({self.canopy_triangle_count + self.wood_triangle_count:,} triangles)"
+        )
+
     def _on_mouse_button(self, window: Any, button: int, action: int, modifiers: int) -> None:
         if button == self.glfw.MOUSE_BUTTON_LEFT:
             self.dragging = action == self.glfw.PRESS
@@ -874,6 +991,7 @@ class OpenGLViewer:
         print("  , / .                       : decrease / increase foliage noise scale")
         print("  - / =                       : decrease / increase angularity")
         print("  Z / X                       : decrease / increase impostor footprint size")
+        print("  A                           : enable / pause automatic progressive LOD")
         print("  B                           : reset representation benchmark averages")
         print("  L                           : toggle canopy visibility")
         print("  1 / 2 / 3 / 4 / 5           : trunk / primary / secondary / tertiary / full tree")
@@ -904,6 +1022,7 @@ class OpenGLViewer:
                     self.mode_sample_seconds += delta
                 self.frame_count += 1
                 self._poll_gpu_queries()
+                self._poll_progressive_updates()
 
                 framebuffer_width, framebuffer_height = self.glfw.get_framebuffer_size(self.window)
                 gl.glViewport(0, 0, framebuffer_width, framebuffer_height)
@@ -956,6 +1075,8 @@ class OpenGLViewer:
                 self.glfw.swap_buffers(self.window)
                 self.glfw.poll_events()
         finally:
+            if self.progressive_worker is not None:
+                self.progressive_worker.close(timeout=0.5)
             self._release_canopy_representation()
             self.gpu_telemetry.close()
             if self.gpu_queries:
