@@ -15,7 +15,11 @@ import math
 
 import numpy as np
 
+from oakforge.core.context import GenerationContext
 from oakforge.core.geometry import normalize, perpendicular_frame
+from oakforge.core.models import Branch
+from oakforge.core.recipe_engine import RecipeEngine
+from oakforge.tools.registry import create_default_registry
 from oakforge.core.mesh import (
     FAR_LEAF_PROFILE,
     MID_LEAF_PROFILE,
@@ -25,7 +29,7 @@ from oakforge.core.mesh import (
     build_wood_mesh,
 )
 from oakforge.core.models import Leaf, TreeModel
-from oakforge.generation import generate_tree, load_recipe
+from oakforge.generation import load_recipe
 
 
 @dataclass(frozen=True)
@@ -38,7 +42,8 @@ class ProgressiveLOD:
     wood_mesh: MeshData
     foliage_mesh: MeshData
     mesh_build_seconds: float = 0.0
-    full_generation_seconds: float = 0.0
+    generation_elapsed_seconds: float = 0.0
+    generation_complete: bool = False
 
     @property
     def triangle_count(self) -> int:
@@ -163,27 +168,202 @@ def generate_coarse_tree(recipe_path: str | Path, seed_override: int | None = No
     return tree
 
 
-def _tree_for_level(source: TreeModel, level: int) -> TreeModel:
+class ProgressiveGenerationSession:
+    """Execute one tree's structural recipe once, then add foliage pass by pass.
+
+    The recipe's branch/twig/spray and wood-surface stages are completed first.
+    The foliage loop is retained as executable recipe actions and advanced one
+    pass at a time, so LOD2/LOD1 can be published before the hero foliage exists.
+    """
+
+    BRANCH_GROUPS = (
+        "trunk", "roots", "primary", "leaders",
+        "secondary", "tertiary", "twigs", "sprays",
+    )
+
+    def __init__(self, recipe_path: str | Path, seed_override: int | None = None) -> None:
+        self.recipe = load_recipe(recipe_path)
+        self.tree_settings = self.recipe["tree"]
+        if seed_override is not None:
+            self.tree_settings["seed"] = int(seed_override)
+        seed = int(self.tree_settings.get("seed", 1))
+        initial_values = {
+            "tree": self.tree_settings,
+            "groups": {
+                "trunk": [], "roots": [], "primary": [], "leaders": [],
+                "secondary": [], "tertiary": [], "twigs": [], "sprays": [],
+                "leaves": [],
+            },
+        }
+        self.context = GenerationContext(
+            values=initial_values, random=np.random.default_rng(seed)
+        )
+        self.engine = RecipeEngine(self.context, create_default_registry())
+        self.structural_actions: list[dict[str, Any]] = []
+        self.trailing_actions: list[dict[str, Any]] = []
+        self.foliage_actions: list[dict[str, Any]] = []
+        self.foliage_enabled = False
+        self.total_leaf_passes = 0
+        self.current_leaf_pass = 0
+        self._prepared = False
+        self._finished = False
+
+        pipeline = list(self.recipe["pipeline"])
+        foliage_index = None
+        foliage_if: dict[str, Any] | None = None
+        foliage_loop: dict[str, Any] | None = None
+        for action_index, action in enumerate(pipeline):
+            if not isinstance(action, dict) or "if" not in action:
+                continue
+            candidate = action["if"]
+            if not isinstance(candidate, dict):
+                continue
+            then_actions = candidate.get("then", [])
+            loop_action = next(
+                (item["do_while"] for item in then_actions
+                 if isinstance(item, dict) and "do_while" in item),
+                None,
+            )
+            if loop_action is not None:
+                foliage_index = action_index
+                foliage_if = candidate
+                foliage_loop = loop_action
+                break
+
+        if foliage_index is None or foliage_if is None or foliage_loop is None:
+            self.structural_actions = pipeline
+        else:
+            self.structural_actions = pipeline[:foliage_index]
+            self.trailing_actions = pipeline[foliage_index + 1:]
+            self.foliage_enabled = bool(
+                self.engine.evaluate(foliage_if.get("condition", False))
+            )
+            if self.foliage_enabled:
+                self.foliage_actions = list(foliage_loop.get("do", []))
+                condition = foliage_loop.get("condition", {})
+                operands = condition.get("lt") if isinstance(condition, dict) else None
+                if not isinstance(operands, (list, tuple)) or len(operands) != 2:
+                    raise ValueError(
+                        "Progressive foliage do_while must use an 'lt' pass-count condition"
+                    )
+                self.total_leaf_passes = int(self.engine.evaluate(operands[1]))
+                if self.total_leaf_passes < 0:
+                    raise ValueError("Foliage pass count must be non-negative")
+            else:
+                self.context.values["foliage_status"] = "disabled"
+
+    def prepare_structure(self) -> float:
+        """Run trunk through wood-surface generation, but not individual leaves."""
+        if self._prepared:
+            raise RuntimeError("Progressive generation structure has already been prepared")
+        started = perf_counter()
+        self.engine.execute(self.structural_actions)
+        if self.foliage_enabled:
+            self.context.values["leaf_pass"] = 0
+        elif not self.trailing_actions:
+            self._finished = True
+        self._prepared = True
+        return perf_counter() - started
+
+    def advance_leaf_pass(self) -> bool:
+        """Execute exactly one recipe-declared foliage pass."""
+        if not self._prepared:
+            raise RuntimeError("Call prepare_structure before advancing foliage")
+        if self._finished or self.current_leaf_pass >= self.total_leaf_passes:
+            return False
+        self.engine.execute(self.foliage_actions)
+        self.current_leaf_pass = int(self.context.values["leaf_pass"])
+        if self.current_leaf_pass >= self.total_leaf_passes:
+            self.finish()
+        return True
+
+    def finish(self) -> None:
+        """Execute recipe actions after the foliage stage exactly once."""
+        if self._finished:
+            return
+        if self.trailing_actions:
+            self.engine.execute(self.trailing_actions)
+        self._finished = True
+
+    def build_tree_model(self) -> TreeModel:
+        """Snapshot the current recipe context as a renderer-independent tree."""
+        if not self._prepared:
+            raise RuntimeError("Call prepare_structure before building a tree snapshot")
+        groups = self.context.values["groups"]
+        branches: list[Branch] = []
+        for group_name in self.BRANCH_GROUPS:
+            branches.extend(
+                item for item in groups.get(group_name, [])
+                if isinstance(item, Branch)
+            )
+        leaves = [
+            item for item in groups.get("leaves", [])
+            if isinstance(item, Leaf)
+        ]
+        if not branches or branches[0].role != "trunk":
+            raise ValueError("The progressive recipe did not generate a trunk")
+
+        expected_leaf_count = 0
+        if self.current_leaf_pass > 0 and self.total_leaf_passes > 0:
+            expected_leaf_count = int(
+                round(len(leaves) * self.total_leaf_passes / self.current_leaf_pass)
+            )
+        seed = int(self.tree_settings.get("seed", 1))
+        metadata = {
+            "species": self.tree_settings.get("species", "unspecified"),
+            "seed": seed,
+            "branch_groups": {
+                name: len(groups.get(name, []))
+                for name in groups if name != "leaves"
+            },
+            "leaf_count": len(leaves),
+            "source_leaf_count": expected_leaf_count,
+            "progressive_leaf_pass": self.current_leaf_pass,
+            "progressive_leaf_passes": self.total_leaf_passes,
+            "wood_surface": self.context.values.get("wood_surface"),
+        }
+        return TreeModel(
+            name=str(self.tree_settings.get("name", "Procedural Tree")),
+            branches=branches,
+            leaves=leaves,
+            metadata=metadata,
+        )
+
+
+def _tree_for_level(
+    source: TreeModel,
+    level: int,
+    *,
+    leaf_population_pre_sampled: bool = False,
+) -> TreeModel:
     """Select a structural and foliage subset for one runtime representation."""
     metadata = dict(source.metadata)
+    source_leaf_count = int(metadata.get("source_leaf_count", len(source.leaves)))
     if level == 2:
-        # Fine shoots and sprays are present, with one quarter of the actual
-        # placements enlarged slightly to maintain far-to-mid canopy coverage.
-        tree = TreeModel(source.name, list(source.branches), source.leaves[::4], metadata)
+        # A staged source already contains the first quarter of the recipe's
+        # foliage passes. A full model is sampled from the same leading passes.
+        leaves = (
+            list(source.leaves) if leaf_population_pre_sampled
+            else list(source.leaves[:(len(source.leaves) + 3) // 4])
+        )
+        tree = TreeModel(source.name, list(source.branches), leaves, metadata)
         metadata.update({
             "progressive_level": 2,
             "progressive_status": "complete branch hierarchy and one-quarter enlarged actual foliage",
-            "source_leaf_count": len(source.leaves),
+            "source_leaf_count": source_leaf_count,
             "proxy_leaf_count": 0,
         })
     elif level == 1:
-        # One in every two source leaves preserves spatial distribution while
-        # retaining a substantial reduction from the complete hero canopy.
-        tree = TreeModel(source.name, list(source.branches), source.leaves[::2], metadata)
+        # Two of four recipe passes preserve a balanced intermediate density.
+        leaves = (
+            list(source.leaves) if leaf_population_pre_sampled
+            else list(source.leaves[:(len(source.leaves) + 1) // 2])
+        )
+        tree = TreeModel(source.name, list(source.branches), leaves, metadata)
         metadata.update({
             "progressive_level": 1,
             "progressive_status": "complete branch hierarchy and one-half actual foliage",
-            "source_leaf_count": len(source.leaves),
+            "source_leaf_count": source_leaf_count,
             "proxy_leaf_count": 0,
         })
     elif level == 0:
@@ -191,7 +371,7 @@ def _tree_for_level(source: TreeModel, level: int) -> TreeModel:
         metadata.update({
             "progressive_level": 0,
             "progressive_status": "complete detailed foliage",
-            "source_leaf_count": len(source.leaves),
+            "source_leaf_count": source_leaf_count,
             "proxy_leaf_count": 0,
         })
     else:
@@ -202,11 +382,19 @@ def _tree_for_level(source: TreeModel, level: int) -> TreeModel:
     tree.metadata = metadata
     return tree
 
-
-def build_lod_representation(tree: TreeModel, level: int) -> ProgressiveLOD:
+def build_lod_representation(
+    tree: TreeModel,
+    level: int,
+    *,
+    leaf_population_pre_sampled: bool = False,
+) -> ProgressiveLOD:
     """Build one LOD's CPU geometry without creating or touching GPU resources."""
     build_started = perf_counter()
-    lod_tree = _tree_for_level(tree, level) if level < 3 else tree
+    lod_tree = (
+        _tree_for_level(
+            tree, level, leaf_population_pre_sampled=leaf_population_pre_sampled
+        ) if level < 3 else tree
+    )
     wood_mesh = build_wood_mesh(lod_tree)
     leaf_profiles = {
         3: FAR_LEAF_PROFILE,
