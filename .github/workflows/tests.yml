@@ -27,6 +27,10 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
+      - name: Measure runtime tree geometry budget
+        run: |
+          mkdir -p build
+          python -m oakforge.geometry_budget --instances 16 | tee build/runtime-geometry-budget.json
       - name: Smoke-test progressive LOD uploads and draws
         run: xvfb-run -a env OAKFORGE_PROGRESSIVE_GL_SMOKE=1 python -m unittest discover -s tests -p test_progressive_runtime_gl.py -v
       - name: Bake English oak depth impostor
