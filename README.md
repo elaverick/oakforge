@@ -49,7 +49,7 @@ From the project root:
 python main.py
 ```
 
-OakForge first constructs a coarse tree with a real branch scaffold and a compact, deterministic cluster canopy. It then generates the full tree and prepares successively finer LODs on a background CPU worker. The viewer stays responsive and continues drawing the best available representation while refinement runs.
+OakForge first constructs the mature structural scaffold through tertiary branches and places deterministic proxy foliage across that framework. It then generates terminal twigs, sprays and individual leaves in the background, preparing progressively denser and more detailed representations. The viewer stays responsive and continues drawing the best available representation while refinement runs.
 
 Use another recipe with:
 
@@ -61,12 +61,12 @@ Automatic LOD is selected by camera distance, with a two-metre hysteresis band a
 
 | LOD | Camera distance | Representation |
 |---|---:|---|
-| LOD3 | 46 m and beyond | Primary/leader/secondary scaffold with branch-anchored foliage clusters |
-| LOD2 | 26–46 m | Adds tertiary structure and denser clustered foliage |
-| LOD1 | 13–26 m | Full branch hierarchy and one-half sampling of actual leaves |
-| LOD0 | Under 13 m | Full branch hierarchy and all generated detailed leaves |
+| LOD3 | 46 m and beyond | Mature scaffold through tertiary branches, with 17,760 larger branch-anchored proxy leaves |
+| LOD2 | 26–46 m | Complete branch, twig and spray hierarchy with one-eighth of actual leaf placements |
+| LOD1 | 13–26 m | Complete hierarchy with one-third of actual leaves and a more detailed leaf outline |
+| LOD0 | Under 13 m | Complete hierarchy and all 311,136 fully lobed oak leaves |
 
-If the requested LOD is not ready yet, the viewer keeps the closest higher-quality representation already prepared. It never blocks the render loop waiting for the worker. LOD changes currently use a hard representation swap with a two-metre hysteresis band; there is no temporal cross-fade yet.
+If the requested LOD is not ready yet, the viewer keeps the best available representation and never blocks the render loop waiting for the worker. Each transition uses a 0.35-second complementary screen-space dither between the outgoing and incoming meshes, with a two-metre hysteresis band around each distance threshold.
 
 Viewer controls:
 
