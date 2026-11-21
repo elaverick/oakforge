@@ -1003,9 +1003,12 @@ class OpenGLViewer:
         self.active_lod = selected
         self.max_depth = 4
         self.canopy_mode = "polygons"
-        source_leaf_count = int(
-            representation.tree.metadata.get("source_leaf_count", len(representation.tree.leaves))
-        )
+        metadata = representation.tree.metadata
+        source_leaf_count = int(metadata.get("source_leaf_count", 0))
+        if source_leaf_count == 0:
+            # LOD3 has no original leaf instances; its clustered proxy leaves
+            # are nevertheless real rendered geometry and must be counted.
+            source_leaf_count = int(metadata.get("proxy_leaf_count", len(representation.tree.leaves)))
         self.model_leaf_triangles = source_leaf_count * (2 * len(OAK_LEAF_PROFILE) - 1)
         self.source_wood_triangles = self.wood_triangle_count
         self.model_total_triangles = self.source_wood_triangles + self.model_leaf_triangles
