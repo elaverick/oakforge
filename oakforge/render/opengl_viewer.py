@@ -636,6 +636,21 @@ class OpenGLViewer:
                 "Controls: A automatic LOD | mouse wheel distance | 1-5 manual structure | L canopy | R regenerate after worker finishes",
                 "Camera distance LOD bands: LOD3 >=46m | LOD2 26-46m | LOD1 13-26m | LOD0 <13m (2m hysteresis)",
             ]
+            for level, representation in sorted(self.progressive_lods.items()):
+                lines.append(
+                    f"LOD{level}: {representation.triangle_count:,} triangles | "
+                    f"{representation.cpu_bytes / (1024 ** 2):.1f} MiB CPU | "
+                    f"mesh {representation.mesh_build_seconds:.2f}s"
+                )
+            recipe_times = [
+                representation.full_generation_seconds
+                for representation in self.progressive_lods.values()
+                if representation.full_generation_seconds > 0.0
+            ]
+            lines.append(
+                f"Full recipe generation: {max(recipe_times):.2f}s"
+                if recipe_times else "Full recipe generation: pending"
+            )
         else:
             lines = [
                 "OAKFORGE | CANOPY REPRESENTATION BENCHMARK",
