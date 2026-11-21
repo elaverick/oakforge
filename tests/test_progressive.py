@@ -96,6 +96,9 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertEqual(viewer._desired_progressive_lod(), 3)
         viewer.camera_distance = 43.9
         self.assertEqual(viewer._desired_progressive_lod(), 2)
+        # Model the viewer completing the transition before testing the
+        # outward hysteresis edge for the newly active LOD2.
+        viewer.active_lod = 2
         viewer.camera_distance = 48.0
         self.assertEqual(viewer._desired_progressive_lod(), 2)
         viewer.camera_distance = 48.1
