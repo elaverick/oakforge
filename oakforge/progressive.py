@@ -18,7 +18,7 @@ import numpy as np
 from oakforge.core.geometry import normalize, perpendicular_frame
 from oakforge.core.mesh import MeshData, build_foliage_mesh, build_wood_mesh
 from oakforge.core.models import Leaf, TreeModel
-from oakforge.generation import generate_from_file, generate_tree, load_recipe
+from oakforge.generation import generate_tree, load_recipe
 
 
 @dataclass(frozen=True)
@@ -65,7 +65,7 @@ def build_cluster_leaves(
     # Spread a bounded number of anchors across the entire branch set rather
     # than exhausting an early section of the hierarchy and leaving crown gaps.
     anchors_per_branch = 3
-    leaves_per_anchor = 4
+    leaves_per_anchor = 8
     maximum_branches = max(1, math.ceil(target_count / (anchors_per_branch * leaves_per_anchor)))
     selected_indices = set(np.linspace(
         0, len(candidates) - 1, min(len(candidates), maximum_branches), dtype=int
