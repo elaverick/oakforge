@@ -19,6 +19,7 @@ from oakforge.core.mesh import (
 from oakforge.core.models import TreeModel
 from oakforge.render.gpu_metrics import GpuTelemetry
 from oakforge.render.impostor_runtime import IMPOSTOR_STYLES, DepthImpostorRenderer
+from oakforge.render.foliage_texture import build_oak_leaf_atlas
 
 
 def _average_frame_metrics(
@@ -45,15 +46,18 @@ VERTEX_SHADER = """#version 330 core
 layout (location = 0) in vec3 vertex_position;
 layout (location = 1) in vec3 vertex_normal;
 layout (location = 2) in vec3 vertex_colour;
+layout (location = 3) in vec2 vertex_uv;
 uniform mat4 model_matrix;
 uniform mat4 view_matrix;
 uniform mat4 projection_matrix;
 out vec3 world_normal;
 out vec3 surface_colour;
+out vec2 leaf_uv;
 void main()
 {
     world_normal = mat3(transpose(inverse(model_matrix))) * vertex_normal;
     surface_colour = vertex_colour;
+    leaf_uv = vertex_uv;
     gl_Position = projection_matrix * view_matrix * model_matrix * vec4(vertex_position, 1.0);
 }
 """
@@ -61,7 +65,10 @@ void main()
 FRAGMENT_SHADER = """#version 330 core
 in vec3 world_normal;
 in vec3 surface_colour;
+in vec2 leaf_uv;
 out vec4 fragment_colour;
+uniform sampler2D leaf_texture;
+uniform int use_leaf_texture;
 uniform float lod_fade;
 uniform int lod_transition_role;
 void main()
@@ -80,7 +87,13 @@ void main()
     vec3 light_direction = normalize(vec3(-0.45, 0.82, 0.36));
     float diffuse_amount = max(dot(normal_direction, light_direction), 0.0);
     float ambient_amount = 0.34;
-    vec3 shaded_colour = surface_colour * (ambient_amount + diffuse_amount * 0.72);
+    vec3 base_colour = surface_colour;
+    if (use_leaf_texture != 0) {
+        vec4 leaf_sample = texture(leaf_texture, leaf_uv);
+        if (leaf_sample.a < 0.38) discard;
+        base_colour *= leaf_sample.rgb;
+    }
+    vec3 shaded_colour = base_colour * (ambient_amount + diffuse_amount * 0.72);
     fragment_colour = vec4(shaded_colour, 1.0);
 }
 """
@@ -146,6 +159,7 @@ class OpenGLViewer:
         self.impostor_directory = Path(impostor_directory)
         self.window = None
         self.program = 0
+        self.leaf_texture = 0
 
         self.wood_vao = 0
         self.wood_vbo = 0
@@ -243,6 +257,7 @@ class OpenGLViewer:
         self._configure_callbacks()
         self._create_shader_program(VERTEX_SHADER, FRAGMENT_SHADER)
         self._create_buffers()
+        self._create_leaf_texture()
         self._upload_grid_mesh()
         if initial_lod is not None:
             # Reuse the already-built initial CPU meshes. Building them again
@@ -305,7 +320,7 @@ class OpenGLViewer:
         self.program = self._compile_program(vertex_source, fragment_source)
         uniform_names = (
             "model_matrix", "view_matrix", "projection_matrix",
-            "lod_fade", "lod_transition_role",
+            "lod_fade", "lod_transition_role", "leaf_texture", "use_leaf_texture",
         )
         self.tree_uniforms = {
             name: int(self.gl.glGetUniformLocation(self.program, name))
@@ -319,6 +334,29 @@ class OpenGLViewer:
         self.wood_vbo = int(self.gl.glGenBuffers(1))
         self.grid_vao = int(self.gl.glGenVertexArrays(1))
         self.grid_vbo = int(self.gl.glGenBuffers(1))
+
+    def _create_leaf_texture(self) -> None:
+        """Upload the deterministic, transparent oak-leaf atlas."""
+        gl = self.gl
+        from PIL import Image
+
+        atlas = build_oak_leaf_atlas()
+        pixels = np.flipud(np.asarray(atlas, dtype=np.uint8)).copy()
+        self.leaf_texture = int(gl.glGenTextures(1))
+        gl.glActiveTexture(gl.GL_TEXTURE0)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, self.leaf_texture)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR_MIPMAP_LINEAR)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
+        gl.glTexImage2D(
+            gl.GL_TEXTURE_2D, 0, gl.GL_RGBA8,
+            atlas.width, atlas.height, 0,
+            gl.GL_RGBA, gl.GL_UNSIGNED_BYTE, pixels,
+        )
+        gl.glGenerateMipmap(gl.GL_TEXTURE_2D)
+        gl.glUniform1i(self.tree_uniforms["leaf_texture"], 0)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
 
     def _upload_vertex_data(
         self, vertex_array: int, buffer: int, mesh: MeshData, allocation_name: str
@@ -334,16 +372,23 @@ class OpenGLViewer:
         positions = np.frombuffer(mesh.positions, dtype=np.float32).reshape(-1, 3)
         normals = np.frombuffer(mesh.normals, dtype=np.float32).reshape(-1, 3)
         colours = np.frombuffer(mesh.colours, dtype=np.float32).reshape(-1, 3)
-        interleaved = np.empty((vertex_count, 9), dtype=np.float32)
+        if len(mesh.texcoords) == vertex_count * 2:
+            texcoords = np.frombuffer(mesh.texcoords, dtype=np.float32).reshape(-1, 2)
+        else:
+            texcoords = np.zeros((vertex_count, 2), dtype=np.float32)
+        interleaved = np.empty((vertex_count, 11), dtype=np.float32)
         interleaved[:, 0:3] = positions
         interleaved[:, 3:6] = normals
         interleaved[:, 6:9] = colours
+        interleaved[:, 9:11] = texcoords
 
         gl.glBindVertexArray(vertex_array)
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, buffer)
         gl.glBufferData(gl.GL_ARRAY_BUFFER, interleaved.nbytes, interleaved, gl.GL_STATIC_DRAW)
-        stride = 9 * 4
-        for location, size, offset in ((0, 3, 0), (1, 3, 12), (2, 3, 24)):
+        stride = 11 * 4
+        for location, size, offset in (
+            (0, 3, 0), (1, 3, 12), (2, 3, 24), (3, 2, 36)
+        ):
             gl.glEnableVertexAttribArray(location)
             gl.glVertexAttribPointer(
                 location, size, gl.GL_FLOAT, gl.GL_FALSE, stride, ctypes.c_void_p(offset)
@@ -1127,7 +1172,7 @@ class OpenGLViewer:
         self.lod_transition_start = None
 
     def _draw_progressive_geometry(self) -> None:
-        """Draw current and outgoing LODs with complementary screen-door coverage."""
+        """Draw structural wood and textured leaf-card sprays across LOD transitions."""
         gl = self.gl
         transition_active = (
             self.lod_transition_start is not None
@@ -1141,30 +1186,39 @@ class OpenGLViewer:
                 self._release_progressive_transition()
                 transition_active = False
 
+        def draw_wood(vertex_array: int, vertex_count: int) -> None:
+            gl.glUniform1i(self.tree_uniforms["use_leaf_texture"], 0)
+            gl.glBindVertexArray(vertex_array)
+            gl.glDrawArrays(gl.GL_TRIANGLES, 0, vertex_count)
+
+        def draw_foliage(vertex_array: int, vertex_count: int) -> None:
+            if not self.show_leaves or self.max_depth < 4 or vertex_count == 0:
+                return
+            gl.glUniform1i(self.tree_uniforms["use_leaf_texture"], 1)
+            gl.glActiveTexture(gl.GL_TEXTURE0)
+            gl.glBindTexture(gl.GL_TEXTURE_2D, self.leaf_texture)
+            gl.glBindVertexArray(vertex_array)
+            gl.glDrawArrays(gl.GL_TRIANGLES, 0, vertex_count)
+
         if transition_active:
             gl.glUniform1f(self.tree_uniforms["lod_fade"], fade)
             gl.glUniform1i(self.tree_uniforms["lod_transition_role"], 0)
-            gl.glBindVertexArray(self.previous_wood_vao)
-            gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.previous_wood_vertex_count)
-            if self.show_leaves and self.max_depth >= 4:
-                gl.glBindVertexArray(self.previous_canopy_vao)
-                gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.previous_canopy_vertex_count)
+            draw_wood(self.previous_wood_vao, self.previous_wood_vertex_count)
+            draw_foliage(self.previous_canopy_vao, self.previous_canopy_vertex_count)
 
             gl.glUniform1i(self.tree_uniforms["lod_transition_role"], 1)
-            gl.glBindVertexArray(self.wood_vao)
-            gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.wood_vertex_count)
-            if self.show_leaves and self.max_depth >= 4:
-                gl.glBindVertexArray(self.canopy_vao)
-                gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.canopy_vertex_count)
+            draw_wood(self.wood_vao, self.wood_vertex_count)
+            draw_foliage(self.canopy_vao, self.canopy_vertex_count)
         else:
             gl.glUniform1f(self.tree_uniforms["lod_fade"], 1.0)
             gl.glUniform1i(self.tree_uniforms["lod_transition_role"], 2)
-            gl.glBindVertexArray(self.wood_vao)
-            gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.wood_vertex_count)
-            if self.show_leaves and self.max_depth >= 4:
-                gl.glBindVertexArray(self.canopy_vao)
-                gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.canopy_vertex_count)
+            draw_wood(self.wood_vao, self.wood_vertex_count)
+            draw_foliage(self.canopy_vao, self.canopy_vertex_count)
+
+        gl.glUniform1i(self.tree_uniforms["use_leaf_texture"], 0)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
         gl.glBindVertexArray(0)
+
 
     def _on_mouse_button(self, window: Any, button: int, action: int, modifiers: int) -> None:
         if button == self.glfw.MOUSE_BUTTON_LEFT:
@@ -1307,6 +1361,8 @@ class OpenGLViewer:
                     gl.glDeleteBuffers(1, [resource])
             if self.overlay_texture:
                 gl.glDeleteTextures(1, [self.overlay_texture])
+            if self.leaf_texture:
+                gl.glDeleteTextures(1, [self.leaf_texture])
             if self.program:
                 gl.glDeleteProgram(self.program)
             if self.overlay_program:
