@@ -82,7 +82,7 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertIn("twig", roles)
         self.assertIn("spray", roles)
         self.assertEqual(len(representation.branches), len(self.full_tree.branches))
-        self.assertEqual(len(representation.leaves), (len(self.full_tree.leaves) + 7) // 8)
+        self.assertEqual(len(representation.leaves), (len(self.full_tree.leaves) + 3) // 4)
         self.assertEqual(representation.metadata["progressive_level"], 2)
 
 
@@ -94,7 +94,7 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertEqual(len(lod0.branches), len(self.full_tree.branches))
         self.assertIn("twig", {branch.role for branch in lod1.branches})
         self.assertIn("spray", {branch.role for branch in lod1.branches})
-        self.assertEqual(len(lod1.leaves), (len(self.full_tree.leaves) + 2) // 3)
+        self.assertEqual(len(lod1.leaves), (len(self.full_tree.leaves) + 1) // 2)
         self.assertEqual(len(lod0.leaves), len(self.full_tree.leaves))
         self.assertEqual(lod1.metadata["progressive_level"], 1)
         self.assertEqual(lod0.metadata["progressive_level"], 0)
@@ -115,6 +115,21 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertLess(lod3_mesh.triangle_count, lod2_mesh.triangle_count)
         self.assertLess(lod2_mesh.triangle_count, lod1_mesh.triangle_count)
         self.assertLess(lod1_mesh.triangle_count, lod0_mesh.triangle_count)
+
+
+    def test_lod_two_uses_enlarged_leaves_to_preserve_canopy_coverage(self):
+        lod2_tree = _tree_for_level(self.full_tree, 2)
+        regular = build_foliage_mesh(lod2_tree, leaf_profile=MID_LEAF_PROFILE)
+        enlarged = build_foliage_mesh(
+            lod2_tree, leaf_profile=MID_LEAF_PROFILE, leaf_size_scale=1.20
+        )
+        regular_positions = np.frombuffer(regular.positions, dtype=np.float32).reshape(-1, 3)
+        enlarged_positions = np.frombuffer(enlarged.positions, dtype=np.float32).reshape(-1, 3)
+        self.assertEqual(regular.triangle_count, enlarged.triangle_count)
+        self.assertGreater(
+            float(np.linalg.norm(np.ptp(enlarged_positions, axis=0))),
+            float(np.linalg.norm(np.ptp(regular_positions, axis=0))),
+        )
 
     def test_distance_lod_selection_uses_hysteresis(self):
         viewer = OpenGLViewer.__new__(OpenGLViewer)
