@@ -1,3 +1,12 @@
+## 2026-11-21 — Progressive runtime tree generation and LOD
+
+- Added a default progressive viewer path that constructs a reduced scaffold first, with a 6,000-leaf branch-anchored clustered canopy, without waiting for the fine branch, spray, fused-wood or individual-leaf passes.
+- Added a CPU-only background worker which executes the full deterministic recipe and prepares LOD2 (tertiary branches plus up to 18,000 proxy leaves), LOD1 (full branch hierarchy plus one-eighth of actual leaves) and LOD0 (all 311,136 actual leaves).
+- Added distance-based LOD selection with a two-metre hysteresis band. The viewer retains its best ready representation until a finer replacement has been generated and uploaded.
+- Kept OpenGL operations on the viewer thread. CPU mesh packages are published through a bounded queue and uploaded by the context-owning thread.
+- Added an explicit `--legacy-impostor-viewer` option to retain the previous baked depth-impostor versus polygon comparison workflow.
+- Added architecture documentation, deterministic cluster tests, LOD-selection tests and a headless OpenGL progressive upload/draw smoke test. GitHub Actions now runs on this feature branch.
+
 ## 2026-11-20 — Interactive canopy representation benchmark
 
 - Added an `I` hotkey to switch the live viewer between genuine leaf polygons and the depth-impostor atlas, keeping the trunk and branch mesh identical between modes.
