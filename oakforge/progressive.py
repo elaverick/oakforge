@@ -497,7 +497,7 @@ def build_lod_representation(
     # Runtime leaf cards use two triangles each. The leaf budgets are chosen so
     # the total represented leaf surface area rises with each finer LOD.
     leaf_budgets = {3: 3072, 2: 8192, 1: 16384, 0: 40960}
-    leaf_size_scales = {3: 1.0, 2: 1.80, 1: 1.35, 0: 1.0}
+    leaf_size_scales = {3: 1.0, 2: 1.20, 1: 1.08, 0: 1.0}
     foliage_mesh = build_foliage_mesh(
         lod_tree,
         leaf_size_scale=leaf_size_scales[level],
