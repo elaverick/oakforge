@@ -2,59 +2,63 @@
 
 ## Goal
 
-A newly requested tree must become renderable quickly, beginning with a cheap but convincing distant representation. More expensive structural and foliage detail is then generated in the background and promoted into nearer LODs as the camera needs it. Generation must never block the render loop.
+OakForge's default viewer should display a useful oak quickly and refine it while the camera moves. The first representation is built from a reduced structural pass plus a deterministic, branch-anchored foliage proxy. A background worker then runs the complete botanical recipe and prepares successively finer representations. The renderer keeps drawing the best available LOD while more detailed work is in progress.
 
-The procedural growth description is authoritative. Meshes, foliage clusters, depth impostors and future animated representations are derived products; none is allowed to become the source of botanical truth.
+The procedural growth recipe and its generated branch/leaf model remain the botanical source of truth. Cluster leaves and meshes are derived representations.
 
 ## Runtime representation contract
 
-The initial implementation uses four ordered quality levels:
+LOD indices follow the conventional convention: LOD0 is the closest and most detailed representation; LOD3 is the farthest and cheapest.
 
-| Level | Intended use | Content |
-|---|---|---|
-| LOD3 | Far | Primary scaffold and a compact foliage-cluster canopy |
-| LOD2 | Mid/far | Secondary and tertiary structure with denser cluster foliage |
-| LOD1 | Mid/near | Fine shoots and sprays with a deterministic subset of actual leaves |
-| LOD0 | Near | Full structural tree and detailed foliage |
+| Level | Camera distance | Content |
+|---|---:|---|
+| LOD3 | 46 m and beyond | Trunk, roots and primary/leader/secondary scaffold with 1,800 deterministic, branch-anchored proxy leaves |
+| LOD2 | 26–46 m | Adds tertiary structure and up to 7,200 denser proxy leaves distributed across the crown |
+| LOD1 | 13–26 m | Full branch hierarchy including twigs and sprays, with one-eighth of the original leaf placements |
+| LOD0 | Under 13 m | Full branch hierarchy and all generated individual lobed leaves |
 
-The renderer selects the best ready representation appropriate to projected size/distance. If that representation is not ready, it keeps the best available coarser representation. A representation is never removed before its replacement is ready.
+The three distance thresholds have a two-metre hysteresis band to reduce LOD oscillation. Distance is the first implementation's proxy for projected size; camera-space projected bounds should replace fixed distances when this becomes a multi-tree scene system.
 
-## Pipeline
+If the desired LOD is not ready, the viewer continues to use the best available representation. It does not wait for a worker or remove the current geometry before a replacement is uploaded.
 
-1. Parse and validate the recipe on the caller thread.
-2. Start a background generation worker. Execute the existing YAML recipe in order and publish immutable snapshots at structural milestones.
-3. Build CPU meshes and foliage cluster representations on the worker. The worker must not call OpenGL.
-4. Place completed CPU representations on a thread-safe queue.
-5. The OpenGL-owning thread drains that queue and performs resource creation, uploads and retirement.
-6. Select the desired LOD using projected crown size (distance is the first implementation's proxy); apply hysteresis to prevent thrashing.
-7. Keep the last ready LOD visible while a more detailed level is being generated.
+## Current generation pipeline
+
+1. The main thread reads the recipe and executes a reduced pipeline through secondary branching. It omits the expensive fine branching, spray, wood-union bake and individual-leaf placement passes.
+2. It places 1,800 deterministic lobed proxy leaves along the initial scaffold and builds the first wood and foliage meshes. This initial pass is synchronous, but is intentionally bounded to a small number of branches and proxy leaves.
+3. The viewer opens with LOD3.
+4. A background CPU worker executes the complete recipe for the same seed. It then builds LOD2, LOD1 and LOD0, publishing each completed mesh package through a bounded queue.
+5. The render thread drains completed packages and performs all OpenGL resource uploads. The CPU worker never calls OpenGL.
+6. Camera distance selects the best ready representation. The renderer retains already-ready LODs so that the user can move in either direction without rebuilding them.
+
+The current worker does not stream individual branch-generation milestones from inside the recipe interpreter. It runs the full recipe as one background generation task, then prepares and publishes the three higher-detail LODs in order. That is a deliberate first increment; finer-grained subtree scheduling is future work.
 
 ## Botanical and geometry rules
 
-- Preserve deterministic recipe seeds and the existing growth hierarchy.
-- Treat parent-child branch relationships and terminal foliage attachment as canonical.
-- Use branch/twig assemblies and deterministic clustered foliage for economical mid-distance geometry.
-- Preserve the existing layered depth impostor as an optional baked asset, not a prerequisite for first visibility.
-- Never create detail by averaging unrelated depth samples or moving reconstructed depth positions.
-- Do not build the full multi-million-triangle leaf mesh merely to make the first frame visible.
-- Share immutable source data and cached geometry where possible; bound CPU work, memory and GPU uploads.
+- Preserve deterministic recipe seeds and the existing branch-parent hierarchy.
+- Treat the generated branch and leaf model as canonical; never derive botanical data back from a rendered mesh.
+- Use deterministic leaf clusters anchored to real branch positions for distant LODs.
+- Use the actual foliage placements for LOD1 and LOD0; LOD1 deterministically samples one in every eight leaves.
+- Preserve the existing layered depth-impostor baker as an optional offline representation. It is not required for first visibility or progressive runtime operation.
+- The initial LOD omits the fused wood-surface bake, keeping its synchronous construction lighter. Finer LODs use the full recipe's fused structural wood surface.
+- Full LOD0 is intentionally detailed: the default tree creates 311,136 individual leaves. Its CPU mesh and GPU upload are substantially larger than other LODs.
 
 ## Threading and lifecycle
 
-- The background worker owns recipe execution and CPU mesh generation.
-- The render thread exclusively owns OpenGL calls and all GL resource lifetimes.
-- Worker failures are propagated to the viewer as a visible error while the last ready representation remains drawable.
-- Regeneration cancels or invalidates older work by generation token; late results from an old seed are discarded.
-- Shutdown signals the worker, joins it with a bounded timeout, and releases GL resources on the render thread.
+- The caller thread owns the initial reduced tree generation and first mesh build.
+- The worker thread owns complete recipe execution and CPU mesh construction for LOD2/1/0.
+- The OpenGL-owning thread exclusively owns GL resource creation, upload, drawing and release.
+- Worker errors are surfaced in the viewer while the last uploaded representation remains drawable.
+- The queue is bounded so the worker cannot run arbitrarily far ahead of the viewer.
+- Closing the viewer signals the worker to stop publishing and joins it with a bounded timeout. Python recipe execution itself is not pre-emptible in this version; a worker already inside the full recipe may finish in the background after the bounded join.
+- Regeneration is available after the current generation worker has finished. It starts a new seed with the reduced LOD3 path and launches a new worker. Cancelling an active recipe and per-subtree generation tokens are future refinements.
 
 ## Verification
 
-- Unit tests cover progressive milestones, deterministic output, stable parent links, queue ordering, failure propagation and cancellation.
-- Mesh tests verify every representation has aligned packed buffers, finite values and non-empty geometry.
-- OpenGL smoke tests create and draw each available LOD under a headless context.
-- Performance measurements separate recipe time, mesh-build time, upload time, frame time and resident memory.
-- CI must run on this feature branch as well as the existing branches.
+- Unit tests verify initial scaffold structure, same-seed agreement with the full recipe, deterministic cluster placement, packed mesh integrity and LOD2 foliage population.
+- A headless OpenGL smoke test creates the viewer under Xvfb, uploads every LOD level through the production upload path and draws both wood and foliage buffers.
+- The existing complete regression suite continues to cover tree generation, branch attachment, crown shape, root topology, foliage placement, recipe interpretation and the original impostor renderer.
+- GitHub Actions runs on `feature/progressive-tree-generation` and executes both the normal suite and the headless progressive viewer smoke test.
 
-## Delivery boundary
+## Deliberate follow-on work
 
-A first useful release is a runnable OakForge viewer that starts with a lower-cost crown/wood representation, refines in the background and automatically changes between multiple realistic LODs. Wind animation, terrain-aware root placement, Nanite-compatible cluster streaming and a production game-engine integration remain separate follow-on work.
+The first deliverable is an interactive single-tree viewer with a progressively available four-level LOD hierarchy. It is not yet a complete forest streaming engine. The next architectural steps are per-subtree jobs, visibility/projected-size scheduling across multiple trees, shared instanced twig/leaf-cluster assemblies, memory-budgeted CPU/GPU caches, temporal wind animation and a true volumetric far-field canopy representation.
