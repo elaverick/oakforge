@@ -627,6 +627,11 @@ class OpenGLViewer:
                 f"Ready representations: {', '.join(f'LOD{level}' for level in sorted(self.progressive_lods)) or 'none'}",
                 f"Generation worker: {'complete' if self.progressive_finished else 'building full tree and refining LODs'}",
                 f"Active geometry: {active_triangles:,} triangles | wood {self.wood_triangle_count:,} | foliage {active_canopy_triangles:,}",
+                (
+                    f"Foliage cards: {lod_name.foliage_mesh.leaf_count:,} / "
+                    f"{lod_name.foliage_mesh.source_leaf_count:,} available placements"
+                    if lod_name is not None else "Foliage cards: n/a"
+                ),
                 f"GPU allocations: {self._format_bytes(allocated)} | active canopy {self._format_bytes(canopy_allocated)}",
                 f"Current performance: {fps} FPS | CPU frame {frame_ms} | GPU scene {gpu_frame}",
                 f"Device VRAM: {self._format_bytes(used)} used / {self._format_bytes(total)} total",
