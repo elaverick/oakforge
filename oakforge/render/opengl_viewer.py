@@ -887,14 +887,26 @@ class OpenGLViewer:
 
 
     def _desired_progressive_lod(self) -> int:
-        """Map camera distance to the target level, with near detail at LOD0."""
-        if self.camera_distance >= 46.0:
-            return 3
-        if self.camera_distance >= 26.0:
-            return 2
-        if self.camera_distance >= 13.0:
-            return 1
-        return 0
+        """Select distance LOD with a two-metre hysteresis band at each boundary."""
+        thresholds = (13.0, 26.0, 46.0)
+        distance = self.camera_distance
+        if self.active_lod is None:
+            if distance >= thresholds[2]:
+                return 3
+            if distance >= thresholds[1]:
+                return 2
+            if distance >= thresholds[0]:
+                return 1
+            return 0
+
+        target = self.active_lod
+        # Cross towards more detail before the nominal boundary, and move
+        # back to a cheaper representation only after passing it in reverse.
+        while target > 0 and distance < thresholds[target - 1] - 2.0:
+            target -= 1
+        while target < 3 and distance > thresholds[target] + 2.0:
+            target += 1
+        return target
 
     def _poll_progressive_updates(self) -> None:
         """Drain completed CPU representations; OpenGL uploads stay on this thread."""
