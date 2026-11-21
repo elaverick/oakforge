@@ -219,8 +219,13 @@ class OpenGLViewer:
         self._create_shader_program(VERTEX_SHADER, FRAGMENT_SHADER)
         self._create_buffers()
         self._upload_grid_mesh()
-        self._upload_wood_mesh()
-        self._set_canopy_mode("polygons")
+        if initial_lod is not None:
+            # Reuse the already-built initial CPU meshes. Building them again
+            # here would delay first visibility and duplicate peak memory.
+            self._activate_progressive_lod(force=True)
+        else:
+            self._upload_wood_mesh()
+            self._set_canopy_mode("polygons")
         self._create_overlay()
         self._create_gpu_queries()
         self.gpu_telemetry = GpuTelemetry(GL, self._decode_gl_string(GL.GL_RENDERER))
@@ -583,31 +588,51 @@ class OpenGLViewer:
             if allocation_delta >= 0
             else f"{self._format_bytes(abs(allocation_delta))} more for impostor"
         )
-        lines = [
-            "OAKFORGE | CANOPY REPRESENTATION BENCHMARK",
-            f"Mode: {active_name}   [I] switch   [L] canopy on/off",
-            f"Source model: {self.model_total_triangles:,} triangles (wood {self.source_wood_triangles:,} + leaves {self.model_leaf_triangles:,})",
-            f"Active triangles: {active_triangles:,} (wood {self.wood_triangle_count:,} + canopy {active_canopy_triangles:,})",
-            f"Tracked viewer allocations: {self._format_bytes(allocated)}",
-            f"Active canopy allocation: {self._format_bytes(canopy_allocated)}",
-            f"Polygon canopy: {self.model_leaf_triangles:,} source tris | {self._format_bytes(polygon_bytes)} tracked GPU bytes",
-            f"Depth impostor: {int(impostor['vertices'] or 0):,} depth-tested point samples | {self._format_bytes(impostor_bytes)} tracked GPU bytes",
-            f"Allocation delta: {delta_text}",
-            f"Polygon geometry: {int(polygon['vertices'] or 0):,} vertices / {int(polygon['triangles'] or 0):,} triangles",
-            f"Impostor geometry: {int(impostor['vertices'] or 0):,} point samples / 0 triangles",
-            f"Device VRAM: {self._format_bytes(used)} used / {self._format_bytes(total)} total",
-            f"Process VRAM: {self._format_bytes(process)}   GPU load: {str(util) + '%' if util is not None else 'n/a'}",
-            f"GPU memory controller: {str(memory_util) + '%' if memory_util is not None else 'n/a'}",
-            f"Current performance: {fps} FPS   CPU frame: {frame_ms}   GPU scene: {gpu_frame}",
-            f"Polygon average: {self._format_metric(polygon['fps'], ' FPS')}, {self._format_metric(polygon['frame_ms'], ' ms')} frame, {self._format_metric(polygon['gpu_ms'], ' ms')} GPU",
-            f"Impostor average: {self._format_metric(impostor['fps'], ' FPS')}, {self._format_metric(impostor['frame_ms'], ' ms')} frame, {self._format_metric(impostor['gpu_ms'], ' ms')} GPU",
-            f"Telemetry: {telemetry['backend']}   Renderer: {telemetry['gpu_name']}",
-            f"Progressive LOD: {'automatic' if self.progressive_auto else 'manual'} | active {self.active_lod if self.active_lod is not None else 'n/a'} | ready {','.join(str(level) for level in sorted(self.progressive_lods)) or 'none'}",
-            f"Atlas view: {atlas_view}",
-            f"Impostor style: {appearance}",
-            "Appearance: C style | [/] noise | ,/. scale | -/= angularity | Z/X splat size",
-            "Keys: I representation | L canopy | 1-5 structure | W wireframe | V VSync | R regenerate | B reset averages",
-        ]
+        progressive_mode = self.progressive_worker is not None
+        if progressive_mode:
+            lod_name = self.progressive_lods.get(self.active_lod)
+            active_label = lod_name.name if lod_name is not None else "not selected"
+            lines = [
+                "OAKFORGE | PROGRESSIVE TREE GENERATION",
+                f"Active representation: LOD{self.active_lod if self.active_lod is not None else 'n/a'} | {active_label}",
+                f"Automatic distance LOD: {'ON' if self.progressive_auto else 'PAUSED'}",
+                f"Ready representations: {', '.join(f'LOD{level}' for level in sorted(self.progressive_lods)) or 'none'}",
+                f"Generation worker: {'complete' if self.progressive_finished else 'building full tree and refining LODs'}",
+                f"Active geometry: {active_triangles:,} triangles | wood {self.wood_triangle_count:,} | foliage {active_canopy_triangles:,}",
+                f"GPU allocations: {self._format_bytes(allocated)} | active canopy {self._format_bytes(canopy_allocated)}",
+                f"Current performance: {fps} FPS | CPU frame {frame_ms} | GPU scene {gpu_frame}",
+                f"Device VRAM: {self._format_bytes(used)} used / {self._format_bytes(total)} total",
+                f"Process VRAM: {self._format_bytes(process)} | GPU load {str(util) + '%' if util is not None else 'n/a'}",
+                f"GPU memory controller: {str(memory_util) + '%' if memory_util is not None else 'n/a'}",
+                f"Renderer: {telemetry['gpu_name']}",
+                "Controls: A automatic LOD | mouse wheel distance | 1-5 manual structure | L canopy | R regenerate after worker finishes",
+                "Camera distance LOD bands: LOD3 >=46m | LOD2 26-46m | LOD1 13-26m | LOD0 <13m (2m hysteresis)",
+            ]
+        else:
+            lines = [
+                "OAKFORGE | CANOPY REPRESENTATION BENCHMARK",
+                f"Mode: {active_name}   [I] switch   [L] canopy on/off",
+                f"Source model: {self.model_total_triangles:,} triangles (wood {self.source_wood_triangles:,} + leaves {self.model_leaf_triangles:,})",
+                f"Active triangles: {active_triangles:,} (wood {self.wood_triangle_count:,} + canopy {active_canopy_triangles:,})",
+                f"Tracked viewer allocations: {self._format_bytes(allocated)}",
+                f"Active canopy allocation: {self._format_bytes(canopy_allocated)}",
+                f"Polygon canopy: {self.model_leaf_triangles:,} source tris | {self._format_bytes(polygon_bytes)} tracked GPU bytes",
+                f"Depth impostor: {int(impostor['vertices'] or 0):,} depth-tested point samples | {self._format_bytes(impostor_bytes)} tracked GPU bytes",
+                f"Allocation delta: {delta_text}",
+                f"Polygon geometry: {int(polygon['vertices'] or 0):,} vertices / {int(polygon['triangles'] or 0):,} triangles",
+                f"Impostor geometry: {int(impostor['vertices'] or 0):,} point samples / 0 triangles",
+                f"Device VRAM: {self._format_bytes(used)} used / {self._format_bytes(total)} total",
+                f"Process VRAM: {self._format_bytes(process)}   GPU load: {str(util) + '%' if util is not None else 'n/a'}",
+                f"GPU memory controller: {str(memory_util) + '%' if memory_util is not None else 'n/a'}",
+                f"Current performance: {fps} FPS   CPU frame: {frame_ms}   GPU scene: {gpu_frame}",
+                f"Polygon average: {self._format_metric(polygon['fps'], ' FPS')}, {self._format_metric(polygon['frame_ms'], ' ms')} frame, {self._format_metric(polygon['gpu_ms'], ' ms')} GPU",
+                f"Impostor average: {self._format_metric(impostor['fps'], ' FPS')}, {self._format_metric(impostor['frame_ms'], ' ms')} frame, {self._format_metric(impostor['gpu_ms'], ' ms')} GPU",
+                f"Telemetry: {telemetry['backend']}   Renderer: {telemetry['gpu_name']}",
+                f"Atlas view: {atlas_view}",
+                f"Impostor style: {appearance}",
+                "Appearance: C style | [/] noise | ,/. scale | -/= angularity | Z/X splat size",
+                "Keys: I representation | L canopy | 1-5 structure | W wireframe | V VSync | R regenerate | B reset averages",
+            ]
         if self.status_message:
             lines.append(self.status_message)
         return lines
