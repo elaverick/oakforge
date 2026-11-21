@@ -90,7 +90,7 @@ class ProgressiveTreeTests(unittest.TestCase):
         lod0 = _tree_for_level(self.full_tree, 0)
         self.assertEqual(len(lod1.branches), len(self.full_tree.branches))
         self.assertEqual(len(lod0.branches), len(self.full_tree.branches))
-        self.assertEqual(len(lod1.leaves), (len(self.full_tree.leaves) + 3) // 4)
+        self.assertEqual(len(lod1.leaves), (len(self.full_tree.leaves) + 1) // 2)
         self.assertEqual(len(lod0.leaves), len(self.full_tree.leaves))
         self.assertEqual(lod1.metadata["progressive_level"], 1)
         self.assertEqual(lod0.metadata["progressive_level"], 0)
