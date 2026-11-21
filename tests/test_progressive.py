@@ -62,11 +62,17 @@ class ProgressiveTreeTests(unittest.TestCase):
         self.assertEqual(representation.level, 3)
         self.assertGreater(representation.wood_mesh.triangle_count, 1000)
         self.assertGreater(representation.foliage_mesh.triangle_count, 1000)
+        expected_cpu_bytes = 0
         for mesh in (representation.wood_mesh, representation.foliage_mesh):
             self.assertEqual(len(mesh.positions), len(mesh.normals))
             self.assertEqual(len(mesh.positions), len(mesh.colours))
             self.assertEqual(len(mesh.positions) % 9, 0)
             self.assertTrue(np.isfinite(np.frombuffer(mesh.positions, dtype=np.float32)).all())
+            expected_cpu_bytes += sum(
+                len(buffer) * buffer.itemsize
+                for buffer in (mesh.positions, mesh.normals, mesh.colours)
+            )
+        self.assertEqual(representation.cpu_bytes, expected_cpu_bytes)
 
     def test_lod_two_uses_tertiary_structure_and_clustered_foliage(self):
         representation = _tree_for_level(self.full_tree, 2)
