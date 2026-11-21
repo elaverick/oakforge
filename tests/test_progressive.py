@@ -188,7 +188,7 @@ class ProgressiveTreeTests(unittest.TestCase):
         # Total leaf area is a useful monotonicity guard: adding more leaves
         # must not be offset by shrinking every leaf enough to reduce canopy fill.
         area_lod3 = foliage_area(self.coarse_tree.leaves)
-        area_lod2 = foliage_area(lod2_tree.leaves, 1.40)
+        area_lod2 = foliage_area(lod2_tree.leaves, 1.34)
         area_lod1 = foliage_area(lod1_tree.leaves, 1.08)
         area_lod0 = foliage_area(self.full_tree.leaves)
         self.assertLess(area_lod3, area_lod2)
