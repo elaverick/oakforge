@@ -29,7 +29,7 @@ from oakforge.core.mesh import (
     build_wood_mesh,
 )
 from oakforge.core.models import Leaf, TreeModel
-from oakforge.generation import load_recipe
+from oakforge.generation import generate_tree, load_recipe
 
 
 @dataclass(frozen=True)
