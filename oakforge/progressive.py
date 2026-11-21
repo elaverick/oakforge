@@ -167,22 +167,22 @@ def _tree_for_level(source: TreeModel, level: int) -> TreeModel:
     """Select a structural and foliage subset for one runtime representation."""
     metadata = dict(source.metadata)
     if level == 2:
-        # Fine shoots and sprays are now present, while actual leaf placements
-        # are sampled at one eighth of the full botanical population.
-        tree = TreeModel(source.name, list(source.branches), source.leaves[::8], metadata)
+        # Fine shoots and sprays are present, with one quarter of the actual
+        # placements enlarged slightly to maintain far-to-mid canopy coverage.
+        tree = TreeModel(source.name, list(source.branches), source.leaves[::4], metadata)
         metadata.update({
             "progressive_level": 2,
-            "progressive_status": "complete branch hierarchy and one-eighth actual foliage",
+            "progressive_status": "complete branch hierarchy and one-quarter enlarged actual foliage",
             "source_leaf_count": len(source.leaves),
             "proxy_leaf_count": 0,
         })
     elif level == 1:
-        # One in every three source leaves preserves spatial distribution while
-        # giving a visible density step before the complete close-up canopy.
-        tree = TreeModel(source.name, list(source.branches), source.leaves[::3], metadata)
+        # One in every two source leaves preserves spatial distribution while
+        # retaining a substantial reduction from the complete hero canopy.
+        tree = TreeModel(source.name, list(source.branches), source.leaves[::2], metadata)
         metadata.update({
             "progressive_level": 1,
-            "progressive_status": "complete branch hierarchy and one-third actual foliage",
+            "progressive_status": "complete branch hierarchy and one-half actual foliage",
             "source_leaf_count": len(source.leaves),
             "proxy_leaf_count": 0,
         })
@@ -213,14 +213,17 @@ def build_lod_representation(tree: TreeModel, level: int) -> ProgressiveLOD:
         2: MID_LEAF_PROFILE,
         1: NEAR_LEAF_PROFILE,
     }
+    leaf_size_scales = {2: 1.20}
     foliage_mesh = build_foliage_mesh(
-        lod_tree, leaf_profile=leaf_profiles.get(level)
+        lod_tree,
+        leaf_profile=leaf_profiles.get(level),
+        leaf_size_scale=leaf_size_scales.get(level, 1.0),
     )
     mesh_build_seconds = perf_counter() - build_started
     names = {
         0: "Detailed foliage",
-        1: "Full shoots · one-third lobed foliage",
-        2: "Fine shoots · one-eighth simplified foliage",
+        1: "Full shoots · one-half lobed foliage",
+        2: "Fine shoots · one-quarter enlarged foliage",
         3: "Tertiary scaffold · clustered foliage",
     }
     return ProgressiveLOD(
