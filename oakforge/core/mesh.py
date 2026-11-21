@@ -20,6 +20,9 @@ class MeshData:
     positions: array = field(default_factory=lambda: array("f"))
     normals: array = field(default_factory=lambda: array("f"))
     colours: array = field(default_factory=lambda: array("f"))
+    # Source and retained leaf counts make geometry-budget reports explicit.
+    leaf_count: int = 0
+    source_leaf_count: int = 0
 
     @property
     def triangle_count(self) -> int:
@@ -87,14 +90,30 @@ OAK_LEAF_PROFILE = [
 ]
 
 
-def _make_branch_tube(branch: Branch, mesh: MeshData, radial_sides: int) -> None:
-    """Build a tapered tube using batched ring and face construction."""
+def _make_branch_tube(
+    branch: Branch,
+    mesh: MeshData,
+    radial_sides: int,
+    max_segments: int | None = None,
+) -> None:
+    """Build a tapered tube, optionally resampling it for a cheaper LOD."""
     if branch.role == "trunk":
-        side_count = max(16, radial_sides)
+        side_count = max(12, radial_sides)
     elif branch.role in {"tertiary", "twig", "spray"}:
-        side_count = max(12, radial_sides * 3 // 4)
+        side_count = max(4, radial_sides * 3 // 4)
     else:
-        side_count = max(10, radial_sides // 2)
+        side_count = max(6, radial_sides // 2)
+
+    points = np.asarray(branch.points, dtype=np.float64)
+    radii = np.asarray(branch.radii, dtype=np.float64)
+    if max_segments is not None and max_segments > 0 and len(points) - 1 > max_segments:
+        source_positions = np.linspace(0.0, 1.0, len(points))
+        target_positions = np.linspace(0.0, 1.0, max_segments + 1)
+        points = np.column_stack([
+            np.interp(target_positions, source_positions, points[:, axis])
+            for axis in range(3)
+        ])
+        radii = np.interp(target_positions, source_positions, radii)
     branch_colour = np.asarray(
         BRANCH_COLOURS.get(branch.role, BRANCH_COLOURS["secondary"]), dtype=np.float32
     )
@@ -105,18 +124,18 @@ def _make_branch_tube(branch: Branch, mesh: MeshData, radial_sides: int) -> None
     side_cosines = np.cos(side_angles)[:, None]
     side_sines = np.sin(side_angles)[:, None]
 
-    for point_index, centre in enumerate(branch.points):
-        previous_point = branch.points[max(0, point_index - 1)]
-        next_point = branch.points[min(len(branch.points) - 1, point_index + 1)]
+    for point_index, centre in enumerate(points):
+        previous_point = points[max(0, point_index - 1)]
+        next_point = points[min(len(points) - 1, point_index + 1)]
         tangent = normalize(next_point - previous_point)
         side_axis, normal_axis = transported_frame(tangent, previous_side_axis)
         previous_side_axis = side_axis
         radial_directions = normalize(
             side_cosines * side_axis[None, :] + side_sines * normal_axis[None, :]
         )
-        local_radius = float(branch.radii[point_index])
+        local_radius = float(radii[point_index])
         height_above_ground = max(float(centre[1]), 0.0)
-        trunk_height = max(float(branch.points[-1][1]), 1e-5)
+        trunk_height = max(float(points[-1][1]), 1e-5)
         height_fraction = float(np.clip(height_above_ground / trunk_height, 0.0, 1.0))
 
         if branch.role == "trunk":
@@ -195,11 +214,11 @@ def _make_branch_tube(branch: Branch, mesh: MeshData, radial_sides: int) -> None
     # Every tube is a closed piece of geometry. Child bases normally sit inside
     # their parent branch, so the basal cap is hidden; the distal cap prevents
     # camera-visible holes and broken silhouettes when leaves are disabled.
-    start_tangent = normalize(branch.points[1] - branch.points[0])
-    end_tangent = normalize(branch.points[-1] - branch.points[-2])
+    start_tangent = normalize(points[1] - points[0])
+    end_tangent = normalize(points[-1] - points[-2])
     cap_specs = (
-        (ring_vertices[0], np.asarray(branch.points[0]), -start_tangent),
-        (ring_vertices[-1], np.asarray(branch.points[-1]), end_tangent),
+        (ring_vertices[0], np.asarray(points[0]), -start_tangent),
+        (ring_vertices[-1], np.asarray(points[-1]), end_tangent),
     )
     for ring, centre, desired_normal in cap_specs:
         ring_array = np.asarray(ring, dtype=np.float32)
@@ -229,12 +248,32 @@ def _make_oak_leaves(
     batch_size: int = 16384,
     profile: list[tuple[float, float]] | None = None,
     size_scale: float = 1.0,
+    max_leaf_count: int | None = None,
+    card_mode: bool = False,
 ) -> None:
-    """Triangulate foliage in bounded batches using the requested LOD profile."""
+    """Triangulate a deterministic leaf subset using full or two-triangle leaves."""
+    source_leaf_count = len(leaves)
+    mesh.source_leaf_count = source_leaf_count
     if not leaves:
+        mesh.leaf_count = 0
         return
     if size_scale <= 0.0:
         raise ValueError("Leaf size_scale must be greater than zero")
+
+    if max_leaf_count is not None:
+        if max_leaf_count < 0:
+            raise ValueError("max_leaf_count cannot be negative")
+        if max_leaf_count == 0:
+            mesh.leaf_count = 0
+            return
+        if max_leaf_count < source_leaf_count:
+            # Evenly spaced selection spans the entire recipe order (twig and pass
+            # order), avoiding the crown bias caused by taking the first N leaves.
+            selected_indices = np.linspace(
+                0, source_leaf_count - 1, max_leaf_count, dtype=np.int64
+            )
+            leaves = [leaves[int(index)] for index in selected_indices]
+    mesh.leaf_count = len(leaves)
 
     base_positions = np.asarray([leaf.base_position for leaf in leaves], dtype=np.float32)
     growth_directions = np.asarray(
@@ -247,7 +286,36 @@ def _make_oak_leaves(
     leaf_widths = np.asarray([leaf.width for leaf in leaves], dtype=np.float32) * size_scale
     colour_variations = np.asarray([leaf.colour_variation for leaf in leaves], dtype=np.float32)
 
-    # The fan outline keeps the oak's alternating lobes while remaining a lightweight polygon.
+    if card_mode:
+        # Runtime foliage cards use a pointed four-corner leaf silhouette. Two
+        # triangles replace the 21-triangle hero leaf while retaining independent
+        # orientation, width, colour variation and three-dimensional placement.
+        centre_positions = base_positions + growth_directions * (leaf_lengths[:, None] * 0.52)
+        half_widths = leaf_widths[:, None] * 0.78
+        left_corners = centre_positions + width_directions * half_widths
+        right_corners = centre_positions - width_directions * half_widths
+        tip_positions = base_positions + growth_directions * leaf_lengths[:, None]
+        triangle_positions = np.stack((
+            np.stack((base_positions, left_corners, tip_positions), axis=1),
+            np.stack((base_positions, tip_positions, right_corners), axis=1),
+        ), axis=1)
+        leaf_normals = np.cross(growth_directions, width_directions)
+        normal_lengths = np.linalg.norm(leaf_normals, axis=1, keepdims=True)
+        leaf_normals = leaf_normals / np.maximum(normal_lengths, 1e-8)
+        triangle_normals = np.broadcast_to(
+            leaf_normals[:, None, None, :], triangle_positions.shape
+        )
+        leaf_colours = np.clip(LEAF_BASE_COLOUR + colour_variations, 0.06, 0.85)
+        triangle_colours = np.broadcast_to(
+            leaf_colours[:, None, None, :], triangle_positions.shape
+        )
+        _append_float_buffer(mesh.positions, triangle_positions)
+        _append_float_buffer(mesh.normals, triangle_normals)
+        _append_float_buffer(mesh.colours, triangle_colours)
+        return
+
+    # The detailed profile remains available to the offline impostor baker and
+    # close-up reference renders. It deliberately does not use the runtime budget.
     left_edge = np.asarray(profile or OAK_LEAF_PROFILE, dtype=np.float32)
     right_edge = left_edge[:-1].copy()
     right_edge[:, 1] *= -1.0
@@ -287,16 +355,18 @@ def _make_oak_leaves(
         triangle_colours = np.broadcast_to(
             leaf_colours[:, None, None, :], triangle_positions.shape
         )
-
         _append_float_buffer(mesh.positions, triangle_positions)
         _append_float_buffer(mesh.normals, triangle_normals)
         _append_float_buffer(mesh.colours, triangle_colours)
+
 
 
 def build_wood_mesh(
     tree: TreeModel,
     radial_sides: int = 16,
     include_terminal_twigs: bool = True,
+    max_branch_depth: int | None = None,
+    max_branch_segments: int | None = None,
 ) -> MeshData:
     """Build trunk, roots and branch geometry without leaf polygons.
 
@@ -316,9 +386,11 @@ def build_wood_mesh(
     for branch in tree.branches:
         if branch.branch_id in fused_branch_ids:
             continue
+        if max_branch_depth is not None and branch.depth > max_branch_depth:
+            continue
         if not include_terminal_twigs and branch.role in {"twig", "spray"}:
             continue
-        _make_branch_tube(branch, mesh, radial_sides)
+        _make_branch_tube(branch, mesh, radial_sides, max_branch_segments)
     return mesh
 
 
@@ -328,6 +400,8 @@ def build_foliage_mesh(
     radial_sides: int = 16,
     leaf_profile: list[tuple[float, float]] | None = None,
     leaf_size_scale: float = 1.0,
+    max_leaf_count: int | None = None,
+    card_mode: bool = False,
 ) -> MeshData:
     """Build only canopy geometry for depth-impostor baking.
 
@@ -343,7 +417,12 @@ def build_foliage_mesh(
                 _make_branch_tube(branch, mesh, radial_sides)
     if tree.leaves:
         _make_oak_leaves(
-            tree.leaves, mesh, profile=leaf_profile, size_scale=leaf_size_scale
+            tree.leaves,
+            mesh,
+            profile=leaf_profile,
+            size_scale=leaf_size_scale,
+            max_leaf_count=max_leaf_count,
+            card_mode=card_mode,
         )
     return mesh
 
