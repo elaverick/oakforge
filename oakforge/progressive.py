@@ -57,71 +57,93 @@ def build_cluster_leaves(
     target_count: int,
     branch_roles: tuple[str, ...] = ("primary", "leader", "secondary", "tertiary"),
     seed_offset: int = 0,
-    leaf_size: float = 0.25,
+    leaf_size: float = 0.14,
+    cluster_size: int = 6,
 ) -> list[Leaf]:
-    """Create evenly distributed, deterministic canopy-card anchors.
+    """Create compact overlapping leaf sprays distributed along crown branches.
 
-    The old proxy pass placed 48 leaves on a small subset of scaffold limbs.
-    The runtime version spreads a handful of larger cluster cards over the whole
-    eligible branch hierarchy. This keeps the far canopy volumetric without
-    carrying tens of thousands of independent leaf polygons.
+    Each anchor produces a small radial spray of individually oriented leaves.
+    Branches are selected in proportion to their length and calibre, then the
+    leaf bases are kept close to the shared anchor so the result reads as foliage
+    clusters rather than isolated cards scattered over the scaffold.
     """
-    candidates = [branch for branch in tree.branches if branch.role in branch_roles]
+    candidates = [
+        branch for branch in tree.branches
+        if branch.role in branch_roles and branch.length > 0.12
+    ]
     if not candidates or target_count <= 0:
         return []
-    if leaf_size <= 0.0:
-        raise ValueError("leaf_size must be greater than zero")
+    if leaf_size <= 0.0 or cluster_size < 1:
+        raise ValueError("leaf_size and cluster_size must be positive")
 
     rng = np.random.default_rng(int(tree.metadata.get("seed", 1)) + seed_offset)
-    selected_count = min(len(candidates), target_count)
-    selected_indices = np.linspace(
-        0, len(candidates) - 1, selected_count, dtype=np.int64
+    cluster_count = int(math.ceil(target_count / cluster_size))
+    weights = np.asarray([
+        max(branch.length, 0.05) * math.sqrt(max(branch.radii[0], 0.003))
+        for branch in candidates
+    ], dtype=np.float64)
+    probabilities = weights / max(float(np.sum(weights)), 1e-12)
+    selected_branches = rng.choice(
+        len(candidates), size=cluster_count, replace=True, p=probabilities
     )
-    base_leaves_per_branch = target_count // selected_count
-    extra_leaves = target_count % selected_count
+    branch_anchor_ordinals: dict[int, int] = {}
     leaves: list[Leaf] = []
     world_up = np.array([0.0, 1.0, 0.0], dtype=np.float64)
 
-    for selected_order, branch_index in enumerate(selected_indices):
-        branch = candidates[int(branch_index)]
-        branch_leaf_count = base_leaves_per_branch + (
-            1 if selected_order < extra_leaves else 0
-        )
-        tangent = normalize(branch.tangent_at(0.5), (0.0, 1.0, 0.0))
+    for cluster_index, candidate_index in enumerate(selected_branches):
+        if len(leaves) >= target_count:
+            break
+        branch_index = int(candidate_index)
+        branch = candidates[branch_index]
+        anchor_ordinal = branch_anchor_ordinals.get(branch_index, 0)
+        branch_anchor_ordinals[branch_index] = anchor_ordinal + 1
+        local_count = min(cluster_size, target_count - len(leaves))
+
+        # Stratify repeated anchors along the branch to avoid piling every spray
+        # onto its midpoint. Different branches receive counts by length/width.
+        ordinal_count = max(1, int(np.count_nonzero(selected_branches == branch_index)))
+        proportion = (anchor_ordinal + float(rng.uniform(0.22, 0.78))) / ordinal_count
+        proportion = float(np.clip(0.12 + 0.76 * proportion, 0.10, 0.92))
+        tangent = normalize(branch.tangent_at(proportion), (0.0, 1.0, 0.0))
         side_axis, second_axis = perpendicular_frame(tangent)
-        for anchor_index in range(branch_leaf_count):
-            if branch_leaf_count == 1:
-                proportion = 0.5
-            else:
-                proportion = 0.16 + 0.68 * (
-                    (anchor_index + 0.5) / branch_leaf_count
-                )
-            proportion += float(rng.uniform(-0.035, 0.035))
-            proportion = float(np.clip(proportion, 0.08, 0.92))
-            centre = branch.point_at(proportion)
-            angle = float(rng.uniform(0.0, math.tau))
+        anchor = branch.point_at(proportion)
+        anchor_radius = max(branch.radius_at(proportion), 0.012)
+        cluster_phase = float(rng.uniform(0.0, math.tau))
+        cluster_spread = float(np.clip(anchor_radius * 0.65, 0.025, 0.075))
+
+        for leaf_index in range(local_count):
+            angle = cluster_phase + math.tau * leaf_index / max(local_count, 1)
+            angle += float(rng.uniform(-0.30, 0.30))
             radial = normalize(
-                side_axis * math.cos(angle) + second_axis * math.sin(angle)
+                side_axis * math.cos(angle) + second_axis * math.sin(angle),
+                side_axis,
             )
-            radial = normalize(radial + rng.normal(0.0, 0.14, size=3), side_axis)
-            base = centre + radial * float(rng.uniform(0.04, 0.14))
-            base += world_up * float(rng.uniform(-0.035, 0.055))
+            offset = (
+                radial * float(rng.uniform(0.45, 1.0)) * cluster_spread
+                + tangent * float(rng.uniform(-0.025, 0.025))
+                + world_up * float(rng.uniform(-0.025, 0.035))
+            )
             growth = normalize(
-                tangent * 0.30 + radial * 0.52 + world_up * 0.28
-                + rng.normal(0.0, 0.16, size=3)
+                tangent * float(rng.uniform(0.08, 0.24))
+                + radial * float(rng.uniform(0.48, 0.72))
+                + world_up * float(rng.uniform(0.18, 0.42))
+                + rng.normal(0.0, 0.12, size=3),
+                radial,
             )
-            width_hint = radial + rng.normal(0.0, 0.20, size=3)
-            width_hint -= growth * float(np.dot(width_hint, growth))
-            width = normalize(width_hint, second_axis)
-            scale = float(rng.uniform(0.88, 1.12))
+            width_hint = np.cross(growth, tangent)
+            if float(np.linalg.norm(width_hint)) < 1e-5:
+                width_hint = side_axis
+            width = normalize(width_hint + rng.normal(0.0, 0.10, size=3), side_axis)
+            length = leaf_size * float(rng.uniform(0.82, 1.16))
+            width_scale = float(rng.uniform(0.46, 0.60))
             variation = float(rng.uniform(-0.045, 0.045))
             leaves.append(Leaf(
-                leaf_id=f"cluster_{branch.branch_id}_{anchor_index}",
-                base_position=base,
+                leaf_id=f"cluster_{cluster_index}_{leaf_index}",
+                base_position=anchor + offset,
                 growth_direction=growth,
                 width_direction=width,
-                length=leaf_size * scale,
-                width=leaf_size * 0.70 * scale,
+                length=length,
+                width=length * width_scale,
                 colour_variation=np.array([
                     variation * 0.58, variation, rng.uniform(-0.012, 0.012)
                 ]),
@@ -180,7 +202,7 @@ def generate_coarse_tree(recipe_path: str | Path, seed_override: int | None = No
         # full leaf populations. Both are deliberately deferred.
     tree = generate_tree(recipe)
     tree.leaves = build_cluster_leaves(
-        tree, target_count=3072, seed_offset=3, leaf_size=0.35
+        tree, target_count=3072, seed_offset=3, leaf_size=0.14, cluster_size=6
     )
     tree.metadata = dict(tree.metadata)
     tree.metadata.update({
