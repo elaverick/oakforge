@@ -13,8 +13,8 @@ LOD indices follow the conventional convention: LOD0 is the closest and most det
 | Level | Camera distance | Content |
 |---|---:|---|
 | LOD3 | 46 m and beyond | Fused trunk, roots and major scaffold limbs (primary, leaders and secondary); tertiary branches as swept tubes; 35,520 deterministic proxy leaves |
-| LOD2 | 26–46 m | Complete branch hierarchy including twigs and sprays, with one-quarter of original leaves enlarged by 1.2× |
-| LOD1 | 13–26 m | Complete hierarchy with one-half of original leaf placements and a more detailed leaf profile |
+| LOD2 | 26–46 m | Complete branch hierarchy including twigs and sprays, with one-quarter of original leaves enlarged by 1.4× |
+| LOD1 | 13–26 m | Complete hierarchy with one-half of original leaf placements enlarged by 1.08× and a more detailed leaf profile |
 | LOD0 | Under 13 m | Complete hierarchy and every individual leaf with the full oak-lobed profile |
 
 The three distance thresholds have a two-metre hysteresis band to reduce LOD oscillation. Representation changes use a 0.35-second complementary screen-space dither: outgoing pixels are discarded exactly where incoming pixels are revealed. This avoids alpha blending and transparency sorting. Distance is the first implementation's proxy for projected size; camera-space projected bounds should replace fixed distances when this becomes a multi-tree scene system.
@@ -26,7 +26,7 @@ If the desired LOD is not ready, the viewer continues to use the best available 
 1. The main thread reads the recipe and executes the first two branching iterations through tertiary structure. It omits terminal twigs, sprays and individual-leaf placement, but builds the fused trunk/root/primary/leader/secondary surface used by every refined LOD.
 2. It places 35,520 deterministic proxy leaves in compact three-dimensional clusters along the tertiary scaffold, then builds the first wood and foliage meshes. This initial pass is synchronous, but avoids the thousands of terminal branches and 311,136 source leaves.
 3. The viewer opens with LOD3.
-4. A background CPU worker executes the remaining recipe structure for the same seed: terminal twigs, sprays and the fused wood surface are generated once. It then executes one foliage scatter pass at a time. With the default four-pass oak recipe, pass one publishes LOD2 (one-quarter of actual leaves, enlarged 1.2×), pass two publishes LOD1 (one-half of actual leaves), and passes three and four complete LOD0 (all source leaves). Each ready mesh package is published through a bounded queue.
+4. A background CPU worker executes the remaining recipe structure for the same seed: terminal twigs, sprays and the fused wood surface are generated once. It then executes one foliage scatter pass at a time. With the default four-pass oak recipe, pass one publishes LOD2 (one-quarter of actual leaves, enlarged 1.4×), pass two publishes LOD1 (one-half of actual leaves, enlarged 1.08×), and passes three and four complete LOD0 (all source leaves). Each ready mesh package is published through a bounded queue.
 5. The branch hierarchy and fused wood surface are unchanged by foliage passes. The worker builds the structural wood mesh once and shares that immutable CPU mesh with LOD2, LOD1 and LOD0; only the foliage mesh is rebuilt at each milestone. This reduces repeated CPU mesh work and avoids retaining duplicate wood buffers.
 5. The render thread drains completed packages and performs all OpenGL resource uploads. The CPU worker never calls OpenGL.
 6. Camera distance selects the best ready representation. The renderer retains already-ready LODs so that the user can move in either direction without rebuilding them.
@@ -38,7 +38,7 @@ The worker streams foliage-pass milestones but does not yet stream individual br
 - Preserve deterministic recipe seeds and the existing branch-parent hierarchy.
 - Treat the generated branch and leaf model as canonical; never derive botanical data back from a rendered mesh.
 - Use deterministic leaf clusters anchored to real branch positions for distant LODs.
-- Use deterministic branch-anchored proxy leaves for LOD3. LOD2 and LOD1 use actual foliage placements sampled at one-quarter and one-half respectively; LOD2 enlarges the sampled leaves 1.2× to preserve canopy coverage at its larger viewing distance. LOD0 uses all actual leaves.
+- Use deterministic branch-anchored proxy leaves for LOD3. LOD2 and LOD1 use actual foliage placements sampled at one-quarter and one-half respectively; LOD2 enlarges sampled leaves 1.4× and LOD1 enlarges them 1.08× so total foliage surface area increases monotonically towards LOD0. LOD0 uses all actual leaves.
 - Reduce per-leaf polygon complexity with distinct far, mid, near and hero leaf profiles. The default profile retains the full alternating oak lobes.
 - Preserve the existing layered depth-impostor baker as an optional offline representation. It is not required for first visibility or progressive runtime operation.
 - LOD3 and the refined LODs use the same fused trunk/root/primary/leader/secondary wood surface. Keeping this major scaffold in one shared representation prevents thick limbs from narrowing when the renderer crosses the LOD3-to-LOD2 boundary. Tertiary branches and finer growth remain separate swept tubes.
