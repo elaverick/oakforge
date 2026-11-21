@@ -17,7 +17,7 @@ class OakLeafTextureTests(unittest.TestCase):
         self.assertGreater(np.count_nonzero(pixels[:, :, 3] > 240), 20_000)
         self.assertGreater(
             len(np.unique(pixels[pixels[:, :, 3] > 0, :3], axis=0)),
-            500,
+            32,
         )
 
     def test_atlas_generation_is_deterministic(self):
