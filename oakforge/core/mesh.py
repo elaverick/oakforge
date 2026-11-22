@@ -515,7 +515,7 @@ def build_crown_proxy_mesh(
         else:
             lobe_centre = np.mean(members, axis=0)
             deviations = np.abs(members - lobe_centre)
-            lobe_extent = np.quantile(deviations, 0.91, axis=0) * 1.48
+            lobe_extent = np.quantile(deviations, 0.91, axis=0) * 1.60
             lobe_extent = np.maximum(lobe_extent, global_radii * 0.30)
         lobe_centres.append(lobe_centre)
         lobe_radii.append(lobe_extent)
@@ -559,20 +559,23 @@ def build_crown_proxy_mesh(
                 -quadratic_b[valid] + np.sqrt(discriminants[valid])
             ) / (2.0 * np.maximum(quadratic_a[valid], 1e-8))
             winning_lobe = int(np.argmax(radial_hits))
-            lobe_distance = float(radial_hits[winning_lobe])
-            # Keep a continuous base envelope beneath every fitted lobe. Without
-            # this union step, individual ellipsoid intersections read as
-            # disconnected green cushions instead of one oak crown volume.
-            base_distance = 0.91 / math.sqrt(
+            # Keep a continuous base envelope beneath the lobes, then use a
+            # polynomial smooth-max to blend their radial intersections. This
+            # avoids the hard joins that make several fitted masses look like
+            # separate blobs instead of a single irregular crown volume.
+            radial_distance = 0.91 / math.sqrt(
                 float(np.sum(direction ** 2 / global_radii ** 2))
             )
-            if not math.isfinite(lobe_distance) or lobe_distance <= 0.0:
-                radial_distance = base_distance
-                winning_lobe = int(np.argmax(
-                    (lobe_centres_array - centre) @ direction
-                ))
-            else:
-                radial_distance = max(base_distance, lobe_distance)
+            blend_width = 0.48
+            for lobe_distance in radial_hits:
+                if not math.isfinite(float(lobe_distance)) or lobe_distance <= 0.0:
+                    continue
+                difference = abs(radial_distance - float(lobe_distance))
+                blend = max(blend_width - difference, 0.0)
+                radial_distance = (
+                    max(radial_distance, float(lobe_distance))
+                    + blend * blend / (4.0 * blend_width)
+                )
 
             # A restrained low-frequency displacement breaks the exact ellipsoid
             # intersections without compromising the silhouette at far range.
