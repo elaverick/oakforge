@@ -14,7 +14,10 @@ from typing import Any
 from oakforge.core.mesh import write_obj
 from oakforge.generation import generate_from_file
 from oakforge.progressive import build_lod_representation, generate_coarse_tree
-from oakforge.render.foliage_texture import save_oak_leaf_atlas
+from oakforge.render.foliage_texture import (
+    save_oak_cluster_atlas,
+    save_oak_leaf_atlas,
+)
 
 
 def build_geometry_budget_report(
@@ -48,9 +51,13 @@ def build_geometry_budget_report(
     exported_files: list[str] = []
     output_path = Path(output_dir) if output_dir is not None else None
     exported_texture: str | None = None
+    exported_cluster_texture: str | None = None
     if output_path is not None:
         output_path.mkdir(parents=True, exist_ok=True)
         exported_texture = str(save_oak_leaf_atlas(output_path / "oak_leaf_atlas.png"))
+        exported_cluster_texture = str(
+            save_oak_cluster_atlas(output_path / "oak_foliage_cluster_atlas.png")
+        )
 
     for level in (3, 2, 1, 0):
         representation = representations[level]
@@ -74,7 +81,10 @@ def build_geometry_budget_report(
             "name": representation.name,
             "wood_triangles": wood_triangles,
             "foliage_triangles": foliage_triangles,
+            "canopy_representation": representation.foliage_mesh.canopy_kind,
+            "canopy_texture": representation.foliage_mesh.texture_kind,
             "leaf_cards": representation.foliage_mesh.leaf_count,
+            "foliage_clusters": representation.foliage_mesh.cluster_count,
             "source_leaf_placements": representation.foliage_mesh.source_leaf_count,
             "triangles_per_tree": total_triangles,
             "triangles_for_instances": total_triangles * instances,
@@ -92,6 +102,7 @@ def build_geometry_budget_report(
         "canonical_source_leaves": len(full_tree.leaves),
         "exported_obj_files": exported_files,
         "exported_leaf_texture": exported_texture,
+        "exported_cluster_texture": exported_cluster_texture,
         "levels": levels,
     }
 
