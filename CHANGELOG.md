@@ -1,3 +1,10 @@
+## 2026-11-22 — Distance-specific canopy representations
+
+- Replaced the all-leaf-card LOD ladder with four distinct canopy representations: an irregular crown-volume shell at LOD3, 1,100 crossed multi-leaf clumps at LOD2, 2,200 denser crossed clumps at LOD1, and 70,000 individual leaf cards at LOD0.
+- Added a deterministic multi-leaf clump atlas composed from the shared English-oak leaf atlas. The OpenGL viewer binds the correct crown, clump or leaf material during normal rendering and dithered LOD transitions.
+- Added crown-shell and crossed-clump mesh builders, geometry tests, OBJ/MTL export for both atlases, and updated runtime budget reporting.
+- Increased LOD0 from 40,960 to 70,000 individual leaves while keeping the existing 200,000-triangle per-tree geometry ceiling.
+
 ## 2026-11-21 — Progressive runtime tree generation and LOD
 
 - Added a default progressive viewer path that constructs the mature scaffold through tertiary branches first, with 35,520 deterministic branch-anchored proxy leaves, without waiting for terminal twigs, sprays, fused wood or individual-leaf placement.
