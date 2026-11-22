@@ -49,7 +49,7 @@ From the project root:
 python main.py
 ```
 
-OakForge first constructs the mature structural scaffold through tertiary branches and fits a low-poly crown shell to its leaf-bearing envelope. In the background it generates the canonical terminal twigs, sprays and 311,136 source leaves. LOD2 and LOD1 then represent foliage as 1,100 and 2,200 branch-attached clumps, each built from three crossed multi-leaf cards; LOD0 retains 70,000 individual two-triangle leaf cards. The viewer stays responsive and continues drawing the best available representation while refinement runs.
+OakForge first constructs the mature structural scaffold through tertiary branches and fits a low-poly crown shell to its leaf-bearing envelope. In the background it generates the canonical terminal twigs, sprays and 311,136 source leaves. LOD2 and LOD1 then represent foliage as 1,300 and 2,600 branch-attached clumps, each built from three crossed multi-leaf cards; LOD0 retains 70,000 individual two-triangle leaf cards. The viewer stays responsive and continues drawing the best available representation while refinement runs.
 
 Use another recipe with:
 
@@ -62,8 +62,8 @@ Automatic LOD is selected by camera distance, with a two-metre hysteresis band a
 | LOD | Camera distance | Representation |
 |---|---:|---|
 | LOD3 | 46 m and beyond | Fused major scaffold with a single irregular low-poly crown volume; tertiary wood tubes deferred |
-| LOD2 | 26–46 m | Major scaffold plus simplified tertiary tubes and 1,100 crossed multi-leaf clumps attached to sprays and fine branches |
-| LOD1 | 13–26 m | Major scaffold plus simplified tertiary tubes and 2,200 denser, smaller crossed multi-leaf clumps |
+| LOD2 | 26–46 m | Major scaffold plus simplified tertiary tubes and 1,300 crossed multi-leaf clumps attached to sprays and fine branches |
+| LOD1 | 13–26 m | Major scaffold plus simplified tertiary tubes and 2,600 denser, smaller crossed multi-leaf clumps |
 | LOD0 | Under 13 m | Major scaffold plus simplified tertiary tubes and 70,000 individual textured two-triangle oak-leaf cards |
 
 If the requested LOD is not ready yet, the viewer keeps the best available representation and never blocks the render loop waiting for the worker. Each transition uses a 0.35-second complementary screen-space dither between the outgoing and incoming meshes, with a two-metre hysteresis band around each distance threshold.
