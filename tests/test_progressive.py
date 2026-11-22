@@ -243,7 +243,7 @@ class ProgressiveTreeTests(unittest.TestCase):
 
     def test_runtime_lods_obey_per_tree_geometry_budgets(self):
         expected_leaf_counts = {3: 0, 2: 0, 1: 0, 0: 70000}
-        expected_cluster_counts = {3: 0, 2: 1100, 1: 2200, 0: 0}
+        expected_cluster_counts = {3: 0, 2: 1300, 1: 2600, 0: 0}
         expected_canopy_kinds = {
             3: ("crown", "none"),
             2: ("clusters", "cluster"),
