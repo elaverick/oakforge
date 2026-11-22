@@ -418,14 +418,19 @@ def build_crown_proxy_mesh(
     azimuth_segments: int = 48,
     polar_rings: int = 24,
     seed_offset: int = 0,
+    lobe_count: int = 7,
 ) -> MeshData:
-    """Build one coarse, irregular crown volume instead of rendering leaf cards.
+    """Build a low-poly oak crown shell from overlapping canopy lobes.
 
-    The shell is fitted to the canopy's leaf-bearing point cloud, then displaced
-    with low-frequency harmonics to create a broad, uneven oak crown silhouette.
-    At far distances the canopy is intentionally read as a mass, not as leaves.
+    A deterministic clustering pass fits several overlapping ellipsoids to the
+    leaf-bearing point cloud. The renderer draws only their shared outer radial
+    envelope, so the far LOD reads as one broad, irregular crown mass rather than
+    a collection of individual leaves or a smooth sphere.
     """
     mesh = MeshData()
+    if lobe_count < 2 or azimuth_segments < 8 or polar_rings < 4:
+        raise ValueError("Crown proxy needs at least two lobes and a usable mesh grid")
+
     if tree.leaves:
         leaf_bases = np.asarray(
             [leaf.base_position for leaf in tree.leaves], dtype=np.float64
@@ -449,12 +454,78 @@ def build_crown_proxy_mesh(
     lower = np.quantile(canopy_points, 0.015, axis=0)
     upper = np.quantile(canopy_points, 0.985, axis=0)
     centre = (lower + upper) * 0.5
-    radii = np.maximum((upper - lower) * 0.55, np.asarray([0.35, 0.30, 0.35]))
+    global_radii = np.maximum(
+        (upper - lower) * 0.56,
+        np.asarray([0.35, 0.30, 0.35], dtype=np.float64),
+    )
 
+    # Downsample deterministically for the clustering pass. Full canopy meshes
+    # can have hundreds of thousands of leaves, while several thousand samples
+    # are enough to locate the broad foliage masses.
+    sample_stride = max(1, len(canopy_points) // 8192)
+    samples = canopy_points[::sample_stride]
+    normalised = (samples - centre) / global_radii
+    cluster_total = min(lobe_count, max(2, len(samples)))
+
+    # Farthest-point seeding keeps the lobe centres spread over the crown.
+    highest_index = int(np.argmax(normalised[:, 1]))
+    seed_indices = [highest_index]
+    nearest_distances = np.sum(
+        (normalised - normalised[highest_index]) ** 2, axis=1
+    )
+    for _ in range(1, cluster_total):
+        next_index = int(np.argmax(nearest_distances))
+        seed_indices.append(next_index)
+        distances = np.sum(
+            (normalised - normalised[next_index]) ** 2, axis=1
+        )
+        nearest_distances = np.minimum(nearest_distances, distances)
+
+    cluster_centres = normalised[np.asarray(seed_indices)].copy()
+    labels = np.zeros(len(normalised), dtype=np.int32)
+    for _ in range(14):
+        squared_distances = np.sum(
+            (normalised[:, None, :] - cluster_centres[None, :, :]) ** 2,
+            axis=2,
+        )
+        labels = np.argmin(squared_distances, axis=1)
+        for cluster_index in range(cluster_total):
+            members = normalised[labels == cluster_index]
+            if len(members):
+                cluster_centres[cluster_index] = np.mean(members, axis=0)
+
+    lobe_centres: list[np.ndarray] = []
+    lobe_radii: list[np.ndarray] = []
+    lobe_colours: list[tuple[float, float, float]] = []
+    palette = (
+        (0.105, 0.255, 0.047),
+        (0.135, 0.285, 0.060),
+        (0.095, 0.225, 0.038),
+        (0.155, 0.300, 0.068),
+        (0.115, 0.245, 0.045),
+        (0.130, 0.270, 0.052),
+        (0.085, 0.205, 0.032),
+        (0.165, 0.305, 0.071),
+    )
+    for cluster_index in range(cluster_total):
+        members = samples[labels == cluster_index]
+        if len(members) < 4:
+            lobe_centre = centre + cluster_centres[cluster_index] * global_radii
+            lobe_extent = global_radii * 0.46
+        else:
+            lobe_centre = np.mean(members, axis=0)
+            deviations = np.abs(members - lobe_centre)
+            lobe_extent = np.quantile(deviations, 0.91, axis=0) * 1.48
+            lobe_extent = np.maximum(lobe_extent, global_radii * 0.30)
+        lobe_centres.append(lobe_centre)
+        lobe_radii.append(lobe_extent)
+        lobe_colours.append(palette[cluster_index % len(palette)])
+
+    lobe_centres_array = np.asarray(lobe_centres, dtype=np.float64)
+    lobe_radii_array = np.asarray(lobe_radii, dtype=np.float64)
+    inverse_radii_squared = 1.0 / np.maximum(lobe_radii_array ** 2, 1e-8)
     phase = (int(tree.metadata.get("seed", 1)) + seed_offset) * 0.61803398875
-    normalised_cloud = (canopy_points - centre) / radii
-    cloud_lengths = np.linalg.norm(normalised_cloud, axis=1)
-    cloud_directions = normalised_cloud / np.maximum(cloud_lengths[:, None], 1e-8)
+
     vertices: list[list[np.ndarray]] = []
     vertex_normals: list[list[np.ndarray]] = []
     vertex_colours: list[list[tuple[float, float, float]]] = []
@@ -472,42 +543,58 @@ def build_crown_proxy_mesh(
                 cos_theta,
                 sin_theta * math.sin(phi),
             ], dtype=np.float64)
-            # Recover a directional envelope from the actual leaf-bearing points.
-            # This gives the shell unequal lobes rather than a fitted perfect ellipsoid.
-            alignment = cloud_directions @ direction
-            nearest = np.argpartition(alignment, -min(32, len(alignment)))[-min(32, len(alignment)):]
-            local_alignment = np.clip(alignment[nearest], 0.0, 1.0)
-            local_weights = local_alignment ** 8
-            if float(np.sum(local_weights)) > 1e-8:
-                local_radius = float(
-                    np.sum(cloud_lengths[nearest] * local_weights)
-                    / np.sum(local_weights)
-                )
-            else:
-                local_radius = 1.0
-            cloud_scale = float(np.clip(0.86 + 0.14 * local_radius, 0.80, 1.18))
-
-            # Broad harmonics give the oak its broken, multi-lobed outline. The
-            # higher-order term is still low-frequency enough to remain a crown,
-            # not an accidental return to individual-leaf geometry.
-            displacement = (
-                0.145 * math.cos(3.0 * phi + phase) * sin_theta ** 2
-                + 0.090 * math.sin(5.0 * phi - 1.7 * theta + phase * 0.7) * sin_theta ** 1.5
-                + 0.065 * math.cos(3.0 * theta + 2.0 * phi + phase)
-                + 0.035 * math.sin(7.0 * phi + theta - phase)
+            relative_centres = centre - lobe_centres_array
+            quadratic_a = np.sum(direction[None, :] ** 2 * inverse_radii_squared, axis=1)
+            quadratic_b = 2.0 * np.sum(
+                relative_centres * direction[None, :] * inverse_radii_squared,
+                axis=1,
             )
-            radial_scale = float(np.clip(cloud_scale * (1.0 + displacement), 0.72, 1.32))
-            position = centre + direction * radii * radial_scale
-            normal = normalize(direction / radii, direction)
+            quadratic_c = np.sum(
+                relative_centres ** 2 * inverse_radii_squared, axis=1
+            ) - 1.0
+            discriminants = quadratic_b ** 2 - 4.0 * quadratic_a * quadratic_c
+            valid = discriminants > 0.0
+            radial_hits = np.full(cluster_total, -np.inf, dtype=np.float64)
+            radial_hits[valid] = (
+                -quadratic_b[valid] + np.sqrt(discriminants[valid])
+            ) / (2.0 * np.maximum(quadratic_a[valid], 1e-8))
+            winning_lobe = int(np.argmax(radial_hits))
+            radial_distance = float(radial_hits[winning_lobe])
+            if not math.isfinite(radial_distance) or radial_distance <= 0.0:
+                # Keep the proxy watertight if a sparse sample leaves a tiny gap
+                # between fitted lobes along one ray.
+                radial_distance = 1.0 / math.sqrt(
+                    float(np.sum(direction ** 2 / global_radii ** 2))
+                )
+                winning_lobe = int(np.argmax(
+                    (lobe_centres_array - centre) @ direction
+                ))
+
+            # A restrained low-frequency displacement breaks the exact ellipsoid
+            # intersections without compromising the silhouette at far range.
+            displacement = (
+                0.035 * math.cos(3.0 * phi + phase) * sin_theta ** 2
+                + 0.022 * math.sin(5.0 * phi - 1.7 * theta + phase * 0.7)
+                + 0.018 * math.cos(3.0 * theta + 2.0 * phi + phase)
+            )
+            radial_distance *= float(np.clip(1.0 + displacement, 0.92, 1.08))
+            position = centre + direction * radial_distance
+
+            selected_centre = lobe_centres_array[winning_lobe]
+            selected_inverse = inverse_radii_squared[winning_lobe]
+            normal = normalize(
+                (position - selected_centre) * selected_inverse,
+                direction,
+            )
+            palette_colour = np.asarray(lobe_colours[winning_lobe], dtype=np.float64)
             shade = (
-                0.78
-                + 0.18 * math.sin(4.0 * phi + 2.0 * theta + phase)
-                + 0.10 * math.cos(7.0 * phi - 3.0 * theta + phase)
-                + 0.055 * math.sin(11.0 * phi + 5.0 * theta + phase * 0.6)
+                0.86
+                + 0.12 * math.sin(4.0 * phi + 2.0 * theta + phase)
+                + 0.07 * math.cos(7.0 * phi - 3.0 * theta + phase)
             )
             colour = tuple(
                 float(np.clip(component * shade, 0.035, 0.85))
-                for component in (0.17, 0.34, 0.082)
+                for component in palette_colour
             )
             ring_vertices.append(position)
             ring_normals.append(normal)
