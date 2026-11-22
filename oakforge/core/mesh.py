@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from array import array
+import math
 from dataclasses import dataclass, field
 import zlib
 from typing import Iterable
@@ -26,7 +27,10 @@ class MeshData:
     # Source and retained leaf counts make geometry-budget reports explicit.
     leaf_count: int = 0
     source_leaf_count: int = 0
+    cluster_count: int = 0
     uses_leaf_texture: bool = False
+    canopy_kind: str = "none"
+    texture_kind: str = "none"
 
     @property
     def triangle_count(self) -> int:
@@ -356,6 +360,8 @@ def _make_oak_leaves(
         _append_float_buffer(mesh.colours, triangle_colours)
         _append_float_buffer(mesh.texcoords, triangle_uvs)
         mesh.uses_leaf_texture = True
+        mesh.canopy_kind = "leaves"
+        mesh.texture_kind = "leaf"
         return
 
     # The detailed profile remains available to the offline impostor baker and
@@ -403,6 +409,252 @@ def _make_oak_leaves(
         _append_float_buffer(mesh.normals, triangle_normals)
         _append_float_buffer(mesh.colours, triangle_colours)
 
+
+
+
+def build_crown_proxy_mesh(
+    tree: TreeModel,
+    *,
+    azimuth_segments: int = 36,
+    polar_rings: int = 18,
+    seed_offset: int = 0,
+) -> MeshData:
+    """Build one coarse, irregular crown volume instead of rendering leaf cards.
+
+    The shell is fitted to the canopy's leaf-bearing point cloud, then displaced
+    with low-frequency harmonics to create a broad, uneven oak crown silhouette.
+    At far distances the canopy is intentionally read as a mass, not as leaves.
+    """
+    mesh = MeshData()
+    if tree.leaves:
+        leaf_bases = np.asarray(
+            [leaf.base_position for leaf in tree.leaves], dtype=np.float64
+        )
+        leaf_tips = np.asarray([
+            leaf.base_position + normalize(leaf.growth_direction) * leaf.length
+            for leaf in tree.leaves
+        ], dtype=np.float64)
+        canopy_points = np.vstack((leaf_bases, leaf_tips))
+    else:
+        branch_points = [
+            point
+            for branch in tree.branches
+            if branch.role in {"secondary", "tertiary", "spray", "twig"}
+            for point in branch.points
+        ]
+        if not branch_points:
+            return mesh
+        canopy_points = np.asarray(branch_points, dtype=np.float64)
+
+    lower = np.quantile(canopy_points, 0.015, axis=0)
+    upper = np.quantile(canopy_points, 0.985, axis=0)
+    centre = (lower + upper) * 0.5
+    radii = np.maximum((upper - lower) * 0.55, np.asarray([0.35, 0.30, 0.35]))
+
+    phase = (int(tree.metadata.get("seed", 1)) + seed_offset) * 0.61803398875
+    vertices: list[list[np.ndarray]] = []
+    vertex_normals: list[list[np.ndarray]] = []
+    vertex_colours: list[list[tuple[float, float, float]]] = []
+    for ring_index in range(polar_rings + 1):
+        theta = math.pi * ring_index / polar_rings
+        sin_theta = math.sin(theta)
+        cos_theta = math.cos(theta)
+        ring_vertices: list[np.ndarray] = []
+        ring_normals: list[np.ndarray] = []
+        ring_colours: list[tuple[float, float, float]] = []
+        for segment_index in range(azimuth_segments):
+            phi = math.tau * segment_index / azimuth_segments
+            direction = np.asarray([
+                sin_theta * math.cos(phi),
+                cos_theta,
+                sin_theta * math.sin(phi),
+            ], dtype=np.float64)
+            # Broad harmonics create shallow lobes; the smaller term breaks up
+            # the profile without turning the far canopy back into leaf noise.
+            displacement = (
+                0.075 * math.cos(3.0 * phi + phase) * sin_theta ** 2
+                + 0.045 * math.sin(5.0 * phi - 1.7 * theta + phase * 0.7) * sin_theta ** 1.5
+                + 0.035 * math.cos(3.0 * theta + 2.0 * phi + phase)
+            )
+            radial_scale = max(0.78, 1.0 + displacement)
+            position = centre + direction * radii * radial_scale
+            normal = normalize(direction / radii, direction)
+            shade = (
+                0.92
+                + 0.075 * math.sin(4.0 * phi + 2.0 * theta + phase)
+                + 0.035 * math.cos(7.0 * phi - 3.0 * theta + phase)
+            )
+            colour = tuple(
+                float(np.clip(component * shade, 0.035, 0.85))
+                for component in (0.15, 0.31, 0.075)
+            )
+            ring_vertices.append(position)
+            ring_normals.append(normal)
+            ring_colours.append(colour)
+        vertices.append(ring_vertices)
+        vertex_normals.append(ring_normals)
+        vertex_colours.append(ring_colours)
+
+    for ring_index in range(polar_rings):
+        next_ring = ring_index + 1
+        for segment_index in range(azimuth_segments):
+            next_segment = (segment_index + 1) % azimuth_segments
+            faces = (
+                (
+                    (ring_index, segment_index),
+                    (next_ring, segment_index),
+                    (next_ring, next_segment),
+                ),
+                (
+                    (ring_index, segment_index),
+                    (next_ring, next_segment),
+                    (ring_index, next_segment),
+                ),
+            )
+            for face in faces:
+                positions = [vertices[row][column] for row, column in face]
+                normals = [vertex_normals[row][column] for row, column in face]
+                colours = [vertex_colours[row][column] for row, column in face]
+                geometric = np.cross(positions[1] - positions[0], positions[2] - positions[0])
+                if float(np.dot(geometric, np.mean(normals, axis=0))) < 0.0:
+                    positions[1], positions[2] = positions[2], positions[1]
+                    normals[1], normals[2] = normals[2], normals[1]
+                    colours[1], colours[2] = colours[2], colours[1]
+                for position, normal, colour in zip(positions, normals, colours):
+                    mesh.positions.extend(float(value) for value in position)
+                    mesh.normals.extend(float(value) for value in normal)
+                    mesh.colours.extend(colour)
+                    mesh.texcoords.extend((0.0, 0.0))
+
+    mesh.source_leaf_count = len(tree.leaves)
+    mesh.canopy_kind = "crown"
+    mesh.texture_kind = "none"
+    return mesh
+
+
+def build_foliage_cluster_mesh(
+    tree: TreeModel,
+    *,
+    cluster_count: int,
+    cluster_scale: float = 0.42,
+    seed_offset: int = 0,
+    branch_roles: tuple[str, ...] = ("spray", "twig", "tertiary", "secondary"),
+    planes_per_cluster: int = 3,
+) -> MeshData:
+    """Build crossed, branch-attached leaf-clump cards for middle LODs.
+
+    Each clump card samples a multi-leaf atlas tile. Three intersecting planes
+    provide volume at oblique camera angles without exposing individual leaves
+    or carrying the cost of a fully modelled canopy.
+    """
+    mesh = MeshData()
+    if cluster_count <= 0:
+        return mesh
+    if cluster_scale <= 0.0 or planes_per_cluster < 2:
+        raise ValueError("Cluster scale must be positive and at least two planes are required")
+
+    candidates = [
+        branch for branch in tree.branches
+        if branch.role in branch_roles and branch.length > 0.06
+    ]
+    if not candidates:
+        return mesh
+
+    role_weights = {
+        "spray": 2.4,
+        "twig": 0.72,
+        "tertiary": 0.58,
+        "secondary": 0.22,
+    }
+    weights = np.asarray([
+        max(branch.length, 0.04)
+        * math.sqrt(max(branch.radii[0], 0.002))
+        * role_weights.get(branch.role, 0.5)
+        for branch in candidates
+    ], dtype=np.float64)
+    probabilities = weights / max(float(np.sum(weights)), 1e-12)
+    rng = np.random.default_rng(int(tree.metadata.get("seed", 1)) + seed_offset + 901)
+    selected = rng.choice(len(candidates), size=cluster_count, replace=True, p=probabilities)
+
+    atlas_width = 256.0
+    atlas_height = 256.0
+    padding_u = 3.0 / atlas_width
+    padding_v = 3.0 / atlas_height
+    world_up = np.asarray([0.0, 1.0, 0.0], dtype=np.float64)
+
+    for cluster_index, candidate_index in enumerate(selected):
+        branch = candidates[int(candidate_index)]
+        proportion = float(rng.uniform(0.34, 0.88))
+        tangent = normalize(branch.tangent_at(proportion), (0.0, 1.0, 0.0))
+        side_axis, second_axis = perpendicular_frame(tangent)
+        radial_angle = float(rng.uniform(0.0, math.tau))
+        radial = normalize(
+            side_axis * math.cos(radial_angle) + second_axis * math.sin(radial_angle),
+            side_axis,
+        )
+        centre = branch.point_at(proportion) + radial * float(
+            rng.uniform(0.015, 0.075)
+        )
+        growth = normalize(
+            tangent * float(rng.uniform(0.18, 0.38))
+            + world_up * float(rng.uniform(0.48, 0.78))
+            + radial * float(rng.uniform(-0.18, 0.18)),
+            world_up,
+        )
+        plane_axis_a, plane_axis_b = perpendicular_frame(growth)
+        scale = cluster_scale * float(rng.uniform(0.82, 1.22))
+        half_width = scale * float(rng.uniform(0.62, 0.78))
+        half_height = scale * float(rng.uniform(0.72, 0.90))
+        tile_index = int(rng.integers(0, 4))
+        tile_column = tile_index % 2
+        tile_row_from_top = tile_index // 2
+        u_min = tile_column * 0.5 + padding_u
+        u_max = (tile_column + 1) * 0.5 - padding_u
+        gl_row = 1 - tile_row_from_top
+        v_min = gl_row * 0.5 + padding_v
+        v_max = (gl_row + 1) * 0.5 - padding_v
+        tint = float(rng.uniform(0.87, 1.10))
+        vertex_colour = (
+            tint,
+            tint * float(rng.uniform(0.94, 1.04)),
+            tint * float(rng.uniform(0.84, 0.98)),
+        )
+
+        # Rotating three cards around the local growth axis creates a compact
+        # 3D spray; each texture tile itself contains several oak leaves.
+        phase = float(rng.uniform(0.0, math.tau))
+        for plane_index in range(planes_per_cluster):
+            angle = phase + math.pi * plane_index / planes_per_cluster
+            width_axis = normalize(
+                plane_axis_a * math.cos(angle) + plane_axis_b * math.sin(angle),
+                plane_axis_a,
+            )
+            normal = normalize(np.cross(growth, width_axis), (0.0, 0.0, 1.0))
+            bottom_left = centre - width_axis * half_width - growth * half_height
+            top_left = centre - width_axis * half_width + growth * half_height
+            top_right = centre + width_axis * half_width + growth * half_height
+            bottom_right = centre + width_axis * half_width - growth * half_height
+            triangles = (
+                (bottom_left, top_left, top_right),
+                (bottom_left, top_right, bottom_right),
+            )
+            uvs = (
+                ((u_min, v_min), (u_min, v_max), (u_max, v_max)),
+                ((u_min, v_min), (u_max, v_max), (u_max, v_min)),
+            )
+            for triangle, triangle_uvs in zip(triangles, uvs):
+                for position, uv in zip(triangle, triangle_uvs):
+                    mesh.positions.extend(float(value) for value in position)
+                    mesh.normals.extend(float(value) for value in normal)
+                    mesh.colours.extend(vertex_colour)
+                    mesh.texcoords.extend(uv)
+
+    mesh.cluster_count = cluster_count
+    mesh.source_leaf_count = int(tree.metadata.get("source_leaf_count", len(tree.leaves)))
+    mesh.uses_leaf_texture = True
+    mesh.canopy_kind = "clusters"
+    mesh.texture_kind = "cluster"
+    return mesh
 
 
 def build_wood_mesh(
@@ -496,8 +748,14 @@ def write_obj(mesh: MeshData, file_path: str) -> None:
     material_name = Path(file_path).stem + ".mtl"
     with open(file_path, "w", encoding="utf-8") as output_file:
         output_file.write("# OakForge generated oak tree\n")
-        if mesh.uses_leaf_texture and has_uvs:
-            output_file.write(f"mtllib {material_name}\nusemtl OakLeaf\n")
+        material_variant = {
+            "leaf": ("OakLeaf", "oak_leaf_atlas.png"),
+            "cluster": ("OakCluster", "oak_foliage_cluster_atlas.png"),
+        }.get(mesh.texture_kind)
+        if material_variant is not None and has_uvs:
+            output_file.write(
+                f"mtllib {material_name}\nusemtl {material_variant[0]}\n"
+            )
         for position, colour in zip(positions, colours):
             output_file.write("v %.6f %.6f %.6f %.4f %.4f %.4f\n" % (*position, *colour))
         if texcoords is not None:
@@ -516,15 +774,19 @@ def write_obj(mesh: MeshData, file_path: str) -> None:
             else:
                 output_file.write(f"f {first}//{first} {second}//{second} {third}//{third}\n")
 
-    if mesh.uses_leaf_texture and has_uvs:
+    material_variant = {
+        "leaf": ("OakLeaf", "oak_leaf_atlas.png"),
+        "cluster": ("OakCluster", "oak_foliage_cluster_atlas.png"),
+    }.get(mesh.texture_kind)
+    if material_variant is not None and has_uvs:
         material_path = Path(file_path).with_suffix(".mtl")
         material_path.write_text(
-            "newmtl OakLeaf\n"
+            f"newmtl {material_variant[0]}\n"
             "Ka 1.0 1.0 1.0\n"
             "Kd 1.0 1.0 1.0\n"
             "d 1.0\n"
             "illum 1\n"
-            "map_Kd oak_leaf_atlas.png\n"
-            "map_d oak_leaf_atlas.png\n",
+            f"map_Kd {material_variant[1]}\n"
+            f"map_d {material_variant[1]}\n",
             encoding="utf-8",
         )
