@@ -558,7 +558,36 @@ def build_foliage_cluster_mesh(
         if branch.role in branch_roles and branch.length > 0.06
     ]
     if not candidates:
-        return mesh
+        # Small/custom recipes may attach leaves directly to the trunk and omit
+        # twig/spray branch groups. Group those actual leaves into a small number
+        # of deterministic clumps so every enabled foliage recipe has a valid
+        # middle-distance representation.
+        if not tree.leaves:
+            return mesh
+        fallback_count = min(cluster_count, max(1, int(math.ceil(len(tree.leaves) / 4))))
+        leaf_groups = np.array_split(np.arange(len(tree.leaves)), fallback_count)
+        for group_index, indices in enumerate(leaf_groups):
+            grouped_leaves = [tree.leaves[int(index)] for index in indices]
+            centre = np.mean(
+                np.asarray([leaf.base_position for leaf in grouped_leaves]),
+                axis=0,
+            )
+            growth = normalize(
+                np.mean(
+                    np.asarray([leaf.growth_direction for leaf in grouped_leaves]),
+                    axis=0,
+                ),
+                (0.0, 1.0, 0.0),
+            )
+            candidates.append(Branch(
+                branch_id=f"leaf_fallback_{group_index}",
+                parent_id=None,
+                role="spray",
+                depth=0,
+                points=[centre - growth * 0.08, centre + growth * 0.08],
+                radii=[0.025, 0.012],
+            ))
+        cluster_count = len(candidates)
 
     role_weights = {
         "spray": 2.4,
