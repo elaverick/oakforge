@@ -20,7 +20,13 @@ from oakforge.core.geometry import normalize, perpendicular_frame
 from oakforge.core.models import Branch
 from oakforge.core.recipe_engine import RecipeEngine
 from oakforge.tools.registry import create_default_registry
-from oakforge.core.mesh import MeshData, build_foliage_mesh, build_wood_mesh
+from oakforge.core.mesh import (
+    MeshData,
+    build_crown_proxy_mesh,
+    build_foliage_cluster_mesh,
+    build_foliage_mesh,
+    build_wood_mesh,
+)
 from oakforge.core.models import Leaf, TreeModel
 from oakforge.generation import generate_tree, load_recipe
 
@@ -471,19 +477,21 @@ def build_lod_representation(
     leaf_population_pre_sampled: bool = False,
     shared_wood_mesh: MeshData | None = None,
 ) -> ProgressiveLOD:
-    """Build one LOD's CPU geometry without creating or touching GPU resources.
+    """Build a distance-appropriate canopy and structural wood representation.
 
-    Pass a previously built wood mesh when successive LODs share the same
-    branch hierarchy and fused wood surface. In that case only foliage differs.
+    LOD3 is a single crown-volume proxy, LOD2/LOD1 are crossed leaf-clump cards,
+    and only LOD0 contains individual leaf cards. The middle representations are
+    intentionally built from the branch hierarchy, not from sampled leaf cards.
     """
     build_started = perf_counter()
+    if level not in {0, 1, 2, 3}:
+        raise ValueError(f"Unsupported progressive LOD level: {level}")
     lod_tree = (
         _tree_for_level(
             tree, level, leaf_population_pre_sampled=leaf_population_pre_sampled
         ) if level < 3 else tree
     )
-    # The fused bole and major scaffold are shared by all levels. Fine branch
-    # tubes are resampled and terminal twigs/sprays are replaced by leaf cards.
+
     branch_depths = {3: 2, 2: 3, 1: 3, 0: 3}
     branch_segments = {3: 3, 2: 4, 1: 4, 0: 4}
     wood_mesh = shared_wood_mesh if shared_wood_mesh is not None else build_wood_mesh(
@@ -494,25 +502,40 @@ def build_lod_representation(
         max_branch_segments=branch_segments[level],
     )
 
-    # Runtime leaf cards use two triangles each. The leaf budgets are chosen so
-    # the total represented leaf surface area rises with each finer LOD.
-    leaf_budgets = {3: 3072, 2: 8192, 1: 16384, 0: 40960}
-    leaf_size_scales = {3: 1.0, 2: 1.20, 1: 1.08, 0: 1.0}
-    foliage_mesh = build_foliage_mesh(
-        lod_tree,
-        leaf_size_scale=leaf_size_scales[level],
-        max_leaf_count=leaf_budgets[level],
-        card_mode=True,
-    )
+    if level == 3:
+        foliage_mesh = build_crown_proxy_mesh(lod_tree)
+        name = "Low-poly irregular crown volume"
+    elif level == 2:
+        foliage_mesh = build_foliage_cluster_mesh(
+            lod_tree,
+            cluster_count=1100,
+            cluster_scale=0.38,
+            seed_offset=23,
+        )
+        name = "Crossed branch-attached foliage clumps · medium"
+    elif level == 1:
+        foliage_mesh = build_foliage_cluster_mesh(
+            lod_tree,
+            cluster_count=2200,
+            cluster_scale=0.30,
+            seed_offset=47,
+        )
+        name = "Dense crossed foliage clumps · medium-high"
+    else:
+        # The source model has 311k leaves. Retain 70k deterministically sampled
+        # leaves at LOD0: substantially denser than the old 40,960-card ceiling,
+        # while remaining below the 200k-triangle per-tree runtime target.
+        foliage_mesh = build_foliage_mesh(
+            lod_tree,
+            leaf_size_scale=1.0,
+            max_leaf_count=70_000,
+            card_mode=True,
+        )
+        name = "Individual textured oak leaves · highest density"
+
     mesh_build_seconds = perf_counter() - build_started
-    names = {
-        0: "Budgeted leaf cards · highest density",
-        1: "Budgeted leaf cards · medium-high density",
-        2: "Budgeted leaf cards · medium density",
-        3: "Scaffold · distributed canopy clusters",
-    }
     return ProgressiveLOD(
-        level, names[level], lod_tree, wood_mesh, foliage_mesh,
+        level, name, lod_tree, wood_mesh, foliage_mesh,
         mesh_build_seconds=mesh_build_seconds,
     )
 
