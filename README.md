@@ -18,7 +18,7 @@ The current English-oak recipe generates one trunk, seven main buttress roots, t
 - **Packed mesh builders** — expose separate polygon wood (`build_wood_mesh`), foliage (`build_foliage_mesh`) and complete legacy (`build_tree_mesh`) meshes. Terminal twigs/sprays can be routed to either the polygon mesh or canopy impostor.
 - **Layered canopy depth-impostor baker** — captures multiple depth-peeling layers of leaves into multi-view colour, normal and 16-bit depth atlases. Structural wood remains a separate polygon mesh for conventional LOD.
 - **YAML recipe engine** — calls named tools and controls their execution order.
-- **Progressive OpenGL viewer** — starts with an irregular crown-volume proxy and a coarse scaffold, then refines through branch-attached clump cards to individual leaves, then streams finer tree representations from a CPU worker. Distance-based LOD selection never waits for a finer representation. OpenGL uploads remain on the context-owning thread.
+- **Progressive OpenGL viewer** — starts with an irregular crown-volume proxy and a coarse scaffold, then refines through branch-attached clump cards to individual leaves as finer tree representations stream from a CPU worker. Distance-based LOD selection never waits for a finer representation. OpenGL uploads remain on the context-owning thread.
 - **Legacy impostor viewer** — retains the baked layered depth-impostor versus polygon comparison for explicit A/B inspection.
 - **OBJ exporter** — writes the generated geometry for inspection in Blender or another 3D package.
 
