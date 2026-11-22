@@ -242,7 +242,14 @@ class ProgressiveTreeTests(unittest.TestCase):
         )
 
     def test_runtime_lods_obey_per_tree_geometry_budgets(self):
-        expected_leaf_counts = {3: 3072, 2: 8192, 1: 16384, 0: 40960}
+        expected_leaf_counts = {3: 0, 2: 0, 1: 0, 0: 70000}
+        expected_cluster_counts = {3: 0, 2: 1100, 1: 2200, 0: 0}
+        expected_canopy_kinds = {
+            3: ("crown", "none"),
+            2: ("clusters", "cluster"),
+            1: ("clusters", "cluster"),
+            0: ("leaves", "leaf"),
+        }
         representations = {
             3: build_lod_representation(self.coarse_tree, 3),
         }
@@ -257,17 +264,34 @@ class ProgressiveTreeTests(unittest.TestCase):
 
         for level, expected_leaves in expected_leaf_counts.items():
             representation = representations[level]
-            self.assertEqual(representation.foliage_mesh.leaf_count, expected_leaves)
+            foliage = representation.foliage_mesh
+            self.assertEqual(foliage.leaf_count, expected_leaves)
+            self.assertEqual(foliage.cluster_count, expected_cluster_counts[level])
             self.assertEqual(
-                representation.foliage_mesh.triangle_count,
-                expected_leaves * 2,
-                "Runtime leaves must remain two-triangle cards",
+                (foliage.canopy_kind, foliage.texture_kind),
+                expected_canopy_kinds[level],
             )
-            self.assertTrue(representation.foliage_mesh.uses_leaf_texture)
+            if level == 3:
+                self.assertFalse(foliage.uses_leaf_texture)
+                self.assertGreater(foliage.triangle_count, 500)
+            elif level in {1, 2}:
+                self.assertTrue(foliage.uses_leaf_texture)
+                self.assertEqual(
+                    foliage.triangle_count,
+                    expected_cluster_counts[level] * 6,
+                    "Each clump is three crossed two-triangle cards",
+                )
+            else:
+                self.assertTrue(foliage.uses_leaf_texture)
+                self.assertEqual(
+                    foliage.triangle_count,
+                    expected_leaves * 2,
+                    "Near LOD retains individually textured two-triangle leaves",
+                )
             self.assertEqual(
-                len(representation.foliage_mesh.texcoords),
-                expected_leaves * 6 * 2,
-                "Every card vertex must carry its oak-atlas UV",
+                len(foliage.texcoords),
+                (len(foliage.positions) // 3) * 2,
+                "Every foliage vertex must carry a valid UV attribute",
             )
             self.assertGreaterEqual(
                 representation.gpu_vertex_buffer_bytes,
