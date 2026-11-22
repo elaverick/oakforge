@@ -1,8 +1,8 @@
-"""Shared alpha-cutout atlas for runtime English oak foliage cards.
+"""Shared alpha-cutout atlases for runtime English oak foliage.
 
-The atlas contains sixteen individually authored/generated English oak leaf
-variants. It is a real RGBA texture asset shared by the OpenGL viewer and the
-OBJ exporter, so the appearance does not depend on procedural shader geometry.
+The source atlas contains four individual English-oak leaf variants. A second
+atlas composes them into multi-leaf clumps for the middle LODs. Both are shared
+by the OpenGL viewer and OBJ exporter, so runtime and exported appearance match.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ ATLAS_PATH = Path(__file__).resolve().parents[1] / "assets" / ATLAS_FILENAME
 
 
 def build_oak_leaf_atlas() -> Image.Image:
-    """Load the shared 4x4 English-oak leaf atlas as an RGBA image."""
+    """Load the shared 2x2 English-oak leaf atlas as an RGBA image."""
     if not ATLAS_PATH.is_file():
         raise FileNotFoundError(f"Oak leaf texture atlas is missing: {ATLAS_PATH}")
     with Image.open(ATLAS_PATH) as image:
