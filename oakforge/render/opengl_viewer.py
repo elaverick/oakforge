@@ -19,7 +19,10 @@ from oakforge.core.mesh import (
 from oakforge.core.models import TreeModel
 from oakforge.render.gpu_metrics import GpuTelemetry
 from oakforge.render.impostor_runtime import IMPOSTOR_STYLES, DepthImpostorRenderer
-from oakforge.render.foliage_texture import build_oak_leaf_atlas
+from oakforge.render.foliage_texture import (
+    build_oak_cluster_atlas,
+    build_oak_leaf_atlas,
+)
 
 
 def _average_frame_metrics(
@@ -160,6 +163,9 @@ class OpenGLViewer:
         self.window = None
         self.program = 0
         self.leaf_texture = 0
+        self.cluster_texture = 0
+        self.canopy_texture_kind = "leaf"
+        self.previous_canopy_texture_kind = "leaf"
 
         self.wood_vao = 0
         self.wood_vbo = 0
@@ -257,7 +263,7 @@ class OpenGLViewer:
         self._configure_callbacks()
         self._create_shader_program(VERTEX_SHADER, FRAGMENT_SHADER)
         self._create_buffers()
-        self._create_leaf_texture()
+        self._create_foliage_textures()
         self._upload_grid_mesh()
         if initial_lod is not None:
             # Reuse the already-built initial CPU meshes. Building them again
@@ -335,14 +341,13 @@ class OpenGLViewer:
         self.grid_vao = int(self.gl.glGenVertexArrays(1))
         self.grid_vbo = int(self.gl.glGenBuffers(1))
 
-    def _create_leaf_texture(self) -> None:
-        """Upload the deterministic, transparent oak-leaf atlas."""
+    def _upload_foliage_texture(self, atlas: Any, allocation_name: str) -> int:
+        """Upload a transparent foliage atlas and account for its mip chain."""
         gl = self.gl
-        atlas = build_oak_leaf_atlas()
         pixels = np.flipud(np.asarray(atlas, dtype=np.uint8)).copy()
-        self.leaf_texture = int(gl.glGenTextures(1))
+        texture = int(gl.glGenTextures(1))
         gl.glActiveTexture(gl.GL_TEXTURE0)
-        gl.glBindTexture(gl.GL_TEXTURE_2D, self.leaf_texture)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, texture)
         gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
         gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
         gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR_MIPMAP_LINEAR)
@@ -353,10 +358,25 @@ class OpenGLViewer:
             gl.GL_RGBA, gl.GL_UNSIGNED_BYTE, pixels,
         )
         gl.glGenerateMipmap(gl.GL_TEXTURE_2D)
+        # Base level plus the complete mip chain is approximately four-thirds
+        # of the uncompressed RGBA image size.
+        self.gpu_allocations[allocation_name] = int(atlas.width * atlas.height * 4 * 4 / 3)
+        return texture
+
+    def _create_foliage_textures(self) -> None:
+        """Upload both source-leaf and multi-leaf clump atlases."""
+        gl = self.gl
+        self.leaf_texture = self._upload_foliage_texture(
+            build_oak_leaf_atlas(), "leaf_texture"
+        )
+        self.cluster_texture = self._upload_foliage_texture(
+            build_oak_cluster_atlas(), "cluster_texture"
+        )
         gl.glUseProgram(self.program)
         gl.glUniform1i(self.tree_uniforms["leaf_texture"], 0)
         gl.glUseProgram(0)
         gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
+
 
     def _upload_vertex_data(
         self, vertex_array: int, buffer: int, mesh: MeshData, allocation_name: str
@@ -1107,6 +1127,7 @@ class OpenGLViewer:
             self.previous_canopy_vao = self.canopy_vao
             self.previous_canopy_vbo = self.canopy_vbo
             self.previous_canopy_vertex_count = self.canopy_vertex_count
+            self.previous_canopy_texture_kind = self.canopy_texture_kind
             self.gpu_allocations["transition_wood_vbo"] = self.gpu_allocations.pop("wood_vbo", 0)
             self.gpu_allocations["transition_canopy_vbo"] = self.gpu_allocations.pop("canopy_vbo", 0)
             self.wood_vao = int(self.gl.glGenVertexArrays(1))
@@ -1128,6 +1149,7 @@ class OpenGLViewer:
             self.canopy_vao, self.canopy_vbo, representation.foliage_mesh, "canopy_vbo"
         )
         self.canopy_triangle_count = self.canopy_vertex_count // 3
+        self.canopy_texture_kind = representation.foliage_mesh.texture_kind
         self.active_lod = selected
         self.max_depth = 4
         self.canopy_mode = "polygons"
@@ -1167,12 +1189,13 @@ class OpenGLViewer:
         self.previous_canopy_vao = 0
         self.previous_canopy_vbo = 0
         self.previous_canopy_vertex_count = 0
+        self.previous_canopy_texture_kind = "none"
         self.gpu_allocations.pop("transition_wood_vbo", None)
         self.gpu_allocations.pop("transition_canopy_vbo", None)
         self.lod_transition_start = None
 
     def _draw_progressive_geometry(self) -> None:
-        """Draw structural wood and textured leaf-card sprays across LOD transitions."""
+        """Draw the correct crown, clump or leaf texture for each LOD."""
         gl = self.gl
         transition_active = (
             self.lod_transition_start is not None
@@ -1188,15 +1211,27 @@ class OpenGLViewer:
 
         def draw_wood(vertex_array: int, vertex_count: int) -> None:
             gl.glUniform1i(self.tree_uniforms["use_leaf_texture"], 0)
+            gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
             gl.glBindVertexArray(vertex_array)
             gl.glDrawArrays(gl.GL_TRIANGLES, 0, vertex_count)
 
-        def draw_foliage(vertex_array: int, vertex_count: int) -> None:
+        def draw_foliage(
+            vertex_array: int,
+            vertex_count: int,
+            texture_kind: str,
+        ) -> None:
             if not self.show_leaves or self.max_depth < 4 or vertex_count == 0:
                 return
-            gl.glUniform1i(self.tree_uniforms["use_leaf_texture"], 1)
+            texture_id = {
+                "leaf": self.leaf_texture,
+                "cluster": self.cluster_texture,
+            }.get(texture_kind, 0)
+            gl.glUniform1i(
+                self.tree_uniforms["use_leaf_texture"],
+                1 if texture_id else 0,
+            )
             gl.glActiveTexture(gl.GL_TEXTURE0)
-            gl.glBindTexture(gl.GL_TEXTURE_2D, self.leaf_texture)
+            gl.glBindTexture(gl.GL_TEXTURE_2D, texture_id)
             gl.glBindVertexArray(vertex_array)
             gl.glDrawArrays(gl.GL_TRIANGLES, 0, vertex_count)
 
@@ -1204,16 +1239,28 @@ class OpenGLViewer:
             gl.glUniform1f(self.tree_uniforms["lod_fade"], fade)
             gl.glUniform1i(self.tree_uniforms["lod_transition_role"], 0)
             draw_wood(self.previous_wood_vao, self.previous_wood_vertex_count)
-            draw_foliage(self.previous_canopy_vao, self.previous_canopy_vertex_count)
+            draw_foliage(
+                self.previous_canopy_vao,
+                self.previous_canopy_vertex_count,
+                self.previous_canopy_texture_kind,
+            )
 
             gl.glUniform1i(self.tree_uniforms["lod_transition_role"], 1)
             draw_wood(self.wood_vao, self.wood_vertex_count)
-            draw_foliage(self.canopy_vao, self.canopy_vertex_count)
+            draw_foliage(
+                self.canopy_vao,
+                self.canopy_vertex_count,
+                self.canopy_texture_kind,
+            )
         else:
             gl.glUniform1f(self.tree_uniforms["lod_fade"], 1.0)
             gl.glUniform1i(self.tree_uniforms["lod_transition_role"], 2)
             draw_wood(self.wood_vao, self.wood_vertex_count)
-            draw_foliage(self.canopy_vao, self.canopy_vertex_count)
+            draw_foliage(
+                self.canopy_vao,
+                self.canopy_vertex_count,
+                self.canopy_texture_kind,
+            )
 
         gl.glUniform1i(self.tree_uniforms["use_leaf_texture"], 0)
         gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
@@ -1363,6 +1410,8 @@ class OpenGLViewer:
                 gl.glDeleteTextures(1, [self.overlay_texture])
             if self.leaf_texture:
                 gl.glDeleteTextures(1, [self.leaf_texture])
+            if self.cluster_texture:
+                gl.glDeleteTextures(1, [self.cluster_texture])
             if self.program:
                 gl.glDeleteProgram(self.program)
             if self.overlay_program:
