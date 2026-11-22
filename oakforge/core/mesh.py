@@ -559,16 +559,20 @@ def build_crown_proxy_mesh(
                 -quadratic_b[valid] + np.sqrt(discriminants[valid])
             ) / (2.0 * np.maximum(quadratic_a[valid], 1e-8))
             winning_lobe = int(np.argmax(radial_hits))
-            radial_distance = float(radial_hits[winning_lobe])
-            if not math.isfinite(radial_distance) or radial_distance <= 0.0:
-                # Keep the proxy watertight if a sparse sample leaves a tiny gap
-                # between fitted lobes along one ray.
-                radial_distance = 1.0 / math.sqrt(
-                    float(np.sum(direction ** 2 / global_radii ** 2))
-                )
+            lobe_distance = float(radial_hits[winning_lobe])
+            # Keep a continuous base envelope beneath every fitted lobe. Without
+            # this union step, individual ellipsoid intersections read as
+            # disconnected green cushions instead of one oak crown volume.
+            base_distance = 0.91 / math.sqrt(
+                float(np.sum(direction ** 2 / global_radii ** 2))
+            )
+            if not math.isfinite(lobe_distance) or lobe_distance <= 0.0:
+                radial_distance = base_distance
                 winning_lobe = int(np.argmax(
                     (lobe_centres_array - centre) @ direction
                 ))
+            else:
+                radial_distance = max(base_distance, lobe_distance)
 
             # A restrained low-frequency displacement breaks the exact ellipsoid
             # intersections without compromising the silhouette at far range.
