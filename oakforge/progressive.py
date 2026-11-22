@@ -508,16 +508,16 @@ def build_lod_representation(
     elif level == 2:
         foliage_mesh = build_foliage_cluster_mesh(
             lod_tree,
-            cluster_count=1100,
-            cluster_scale=0.38,
+            cluster_count=1300,
+            cluster_scale=0.36,
             seed_offset=23,
         )
         name = "Crossed branch-attached foliage clumps · medium"
     elif level == 1:
         foliage_mesh = build_foliage_cluster_mesh(
             lod_tree,
-            cluster_count=2200,
-            cluster_scale=0.30,
+            cluster_count=2600,
+            cluster_scale=0.28,
             seed_offset=47,
         )
         name = "Dense crossed foliage clumps · medium-high"
