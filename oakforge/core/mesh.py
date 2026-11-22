@@ -415,8 +415,8 @@ def _make_oak_leaves(
 def build_crown_proxy_mesh(
     tree: TreeModel,
     *,
-    azimuth_segments: int = 36,
-    polar_rings: int = 18,
+    azimuth_segments: int = 48,
+    polar_rings: int = 24,
     seed_offset: int = 0,
 ) -> MeshData:
     """Build one coarse, irregular crown volume instead of rendering leaf cards.
@@ -452,6 +452,9 @@ def build_crown_proxy_mesh(
     radii = np.maximum((upper - lower) * 0.55, np.asarray([0.35, 0.30, 0.35]))
 
     phase = (int(tree.metadata.get("seed", 1)) + seed_offset) * 0.61803398875
+    normalised_cloud = (canopy_points - centre) / radii
+    cloud_lengths = np.linalg.norm(normalised_cloud, axis=1)
+    cloud_directions = normalised_cloud / np.maximum(cloud_lengths[:, None], 1e-8)
     vertices: list[list[np.ndarray]] = []
     vertex_normals: list[list[np.ndarray]] = []
     vertex_colours: list[list[tuple[float, float, float]]] = []
@@ -469,24 +472,42 @@ def build_crown_proxy_mesh(
                 cos_theta,
                 sin_theta * math.sin(phi),
             ], dtype=np.float64)
-            # Broad harmonics create shallow lobes; the smaller term breaks up
-            # the profile without turning the far canopy back into leaf noise.
+            # Recover a directional envelope from the actual leaf-bearing points.
+            # This gives the shell unequal lobes rather than a fitted perfect ellipsoid.
+            alignment = cloud_directions @ direction
+            nearest = np.argpartition(alignment, -min(32, len(alignment)))[-min(32, len(alignment)):]
+            local_alignment = np.clip(alignment[nearest], 0.0, 1.0)
+            local_weights = local_alignment ** 8
+            if float(np.sum(local_weights)) > 1e-8:
+                local_radius = float(
+                    np.sum(cloud_lengths[nearest] * local_weights)
+                    / np.sum(local_weights)
+                )
+            else:
+                local_radius = 1.0
+            cloud_scale = float(np.clip(0.86 + 0.14 * local_radius, 0.80, 1.18))
+
+            # Broad harmonics give the oak its broken, multi-lobed outline. The
+            # higher-order term is still low-frequency enough to remain a crown,
+            # not an accidental return to individual-leaf geometry.
             displacement = (
-                0.075 * math.cos(3.0 * phi + phase) * sin_theta ** 2
-                + 0.045 * math.sin(5.0 * phi - 1.7 * theta + phase * 0.7) * sin_theta ** 1.5
-                + 0.035 * math.cos(3.0 * theta + 2.0 * phi + phase)
+                0.145 * math.cos(3.0 * phi + phase) * sin_theta ** 2
+                + 0.090 * math.sin(5.0 * phi - 1.7 * theta + phase * 0.7) * sin_theta ** 1.5
+                + 0.065 * math.cos(3.0 * theta + 2.0 * phi + phase)
+                + 0.035 * math.sin(7.0 * phi + theta - phase)
             )
-            radial_scale = max(0.78, 1.0 + displacement)
+            radial_scale = float(np.clip(cloud_scale * (1.0 + displacement), 0.72, 1.32))
             position = centre + direction * radii * radial_scale
             normal = normalize(direction / radii, direction)
             shade = (
-                0.92
-                + 0.075 * math.sin(4.0 * phi + 2.0 * theta + phase)
-                + 0.035 * math.cos(7.0 * phi - 3.0 * theta + phase)
+                0.78
+                + 0.18 * math.sin(4.0 * phi + 2.0 * theta + phase)
+                + 0.10 * math.cos(7.0 * phi - 3.0 * theta + phase)
+                + 0.055 * math.sin(11.0 * phi + 5.0 * theta + phase * 0.6)
             )
             colour = tuple(
                 float(np.clip(component * shade, 0.035, 0.85))
-                for component in (0.15, 0.31, 0.075)
+                for component in (0.17, 0.34, 0.082)
             )
             ring_vertices.append(position)
             ring_normals.append(normal)
